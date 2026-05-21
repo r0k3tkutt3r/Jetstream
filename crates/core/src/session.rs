@@ -113,6 +113,23 @@ impl Session {
         let (events_tx, _) = broadcast::channel(EVENT_CHANNEL_CAP);
         let (stdin_tx, mut stdin_rx) = mpsc::channel::<String>(256);
 
+        // Raw mpsc channel — reader → coalescer
+        let (raw_tx, raw_rx) = mpsc::channel::<SessionEvent>(256);
+        let (coalesced_tx, mut coalesced_rx) = mpsc::channel::<SessionEvent>(256);
+
+        // Coalescer: merges Assistant deltas at 16 ms ticks, passes through everything else
+        tokio::spawn(coalesce_deltas(raw_rx, coalesced_tx, std::time::Duration::from_millis(16)));
+
+        // Bridge: mpsc → broadcast (ignore send errors — no receivers is fine)
+        tokio::spawn({
+            let bcast = events_tx.clone();
+            async move {
+                while let Some(ev) = coalesced_rx.recv().await {
+                    let _ = bcast.send(ev);
+                }
+            }
+        });
+
         // Writer task
         tokio::spawn({
             let mut stdin = stdin;
@@ -126,9 +143,8 @@ impl Session {
             }
         });
 
-        // Reader task
+        // Reader task — sends to raw_tx (not directly to broadcast)
         tokio::spawn({
-            let tx = events_tx.clone();
             async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
@@ -137,18 +153,18 @@ impl Session {
                     match parse_line(&line) {
                         Ok(evt) => {
                             for e in map_event(evt) {
-                                if tx.send(e).is_err() { return; }
+                                if raw_tx.send(e).await.is_err() { return; }
                             }
                         }
                         Err(err) => {
-                            let _ = tx.send(SessionEvent::Error {
+                            let _ = raw_tx.send(SessionEvent::Error {
                                 message: format!("parse: {err}"),
                                 recoverable: true,
-                            });
+                            }).await;
                         }
                     }
                 }
-                let _ = tx.send(SessionEvent::Closed { code: 0 });
+                let _ = raw_tx.send(SessionEvent::Closed { code: 0 }).await;
             }
         });
 
@@ -176,6 +192,49 @@ impl Session {
         self.stdin_tx.send(format!("{payload}\n")).await
             .map_err(|_| SessionError::UnexpectedExit(0))?;
         Ok(())
+    }
+}
+
+use std::collections::HashMap;
+use tokio::time::interval;
+
+/// Merges Assistant text deltas keyed by msg_id, flushing at most every `tick`.
+/// Pass-through for all other variants.
+pub async fn coalesce_deltas(
+    mut rx: mpsc::Receiver<SessionEvent>,
+    tx: mpsc::Sender<SessionEvent>,
+    tick: std::time::Duration,
+) {
+    let mut pending: HashMap<String, String> = HashMap::new();
+    let mut tick = interval(tick);
+    loop {
+        tokio::select! {
+            biased;
+            maybe = rx.recv() => match maybe {
+                Some(SessionEvent::Assistant { msg_id, delta }) => {
+                    pending.entry(msg_id).or_default().push_str(&delta);
+                }
+                Some(other) => {
+                    // Flush any buffered deltas before forwarding non-Assistant events,
+                    // so that ordering is preserved (Assistant before Result, etc.)
+                    for (msg_id, delta) in pending.drain() {
+                        let _ = tx.send(SessionEvent::Assistant { msg_id, delta }).await;
+                    }
+                    let _ = tx.send(other).await;
+                }
+                None => {
+                    for (msg_id, delta) in pending.drain() {
+                        let _ = tx.send(SessionEvent::Assistant { msg_id, delta }).await;
+                    }
+                    return;
+                }
+            },
+            _ = tick.tick() => {
+                for (msg_id, delta) in pending.drain() {
+                    let _ = tx.send(SessionEvent::Assistant { msg_id, delta }).await;
+                }
+            }
+        }
     }
 }
 
