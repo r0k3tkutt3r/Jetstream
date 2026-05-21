@@ -27,15 +27,13 @@ fn parses_tool_use_and_result() {
     let mut seen_tool_result = false;
     for line in fixture("tool_use.jsonl").lines() {
         match parse_line(line).expect("parse") {
-            StreamJsonEvent::Assistant { message } => {
-                if message.content.iter().any(|b| matches!(b, ccshell_core::protocol::ContentBlock::ToolUse { .. })) {
-                    seen_tool_use = true;
-                }
+            StreamJsonEvent::Assistant { message }
+                if message.content.iter().any(|b| matches!(b, ccshell_core::protocol::ContentBlock::ToolUse { .. })) => {
+                seen_tool_use = true;
             }
-            StreamJsonEvent::User { message } => {
-                if message.content.iter().any(|b| matches!(b, ccshell_core::protocol::ContentBlock::ToolResult { .. })) {
-                    seen_tool_result = true;
-                }
+            StreamJsonEvent::User { message }
+                if message.content.iter().any(|b| matches!(b, ccshell_core::protocol::ContentBlock::ToolResult { .. })) => {
+                seen_tool_result = true;
             }
             _ => {}
         }
@@ -50,8 +48,8 @@ fn parses_subagent_hook_events() {
     let lines: Vec<_> = content.lines().collect();
     let start = parse_line(lines[0]).expect("parse start");
     let stop  = parse_line(lines[1]).expect("parse stop");
-    matches!(start, StreamJsonEvent::Hook { ref hook_event_name, .. } if hook_event_name == "SubagentStart");
-    matches!(stop,  StreamJsonEvent::Hook { ref hook_event_name, .. } if hook_event_name == "SubagentStop");
+    assert!(matches!(start, StreamJsonEvent::Hook { ref hook_event_name, .. } if hook_event_name == "SubagentStart"));
+    assert!(matches!(stop,  StreamJsonEvent::Hook { ref hook_event_name, .. } if hook_event_name == "SubagentStop"));
 }
 
 #[test]
@@ -70,5 +68,5 @@ fn parses_result_event() {
 fn unknown_variants_become_unknown_not_error() {
     let line = r#"{"type":"future_variant_we_dont_know_yet","foo":"bar"}"#;
     let evt = parse_line(line).expect("parse should succeed");
-    assert!(matches!(evt, StreamJsonEvent::Unknown { .. }));
+    assert!(matches!(evt, StreamJsonEvent::Unknown));
 }
