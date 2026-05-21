@@ -1,0 +1,9 @@
+/target
+/ui/dist
+/ui/node_modules
+.DS_Store
+*.log
+.superpowers/
+~/Library/Application Support/CCShell
+.vscode
+.idea
