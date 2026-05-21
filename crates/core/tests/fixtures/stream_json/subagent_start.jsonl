@@ -1,0 +1,2 @@
+{"type":"hook","hook_event_name":"SubagentStart","payload":{"subagent_id":"sa_01","agent_name":"code-reviewer","prompt":"review src/auth.ts"}}
+{"type":"hook","hook_event_name":"SubagentStop","payload":{"subagent_id":"sa_01","result":{"summary":"3 issues found"}}}

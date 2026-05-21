@@ -1,0 +1,2 @@
+{"type":"assistant","message":{"id":"msg_02","role":"assistant","content":[{"type":"tool_use","id":"toolu_01","name":"Read","input":{"file_path":"/tmp/x"}}]},"session_id":"8f3a1b2c-d4e5-4f67-89ab-cdef01234567"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"file contents","is_error":false}]},"session_id":"8f3a1b2c-d4e5-4f67-89ab-cdef01234567"}
