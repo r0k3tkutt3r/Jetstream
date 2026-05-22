@@ -32,6 +32,9 @@ export const ipc = {
 
   replaySession: (id: string) =>
     invoke<void>("replay_session", { id }),
+
+  resumeSession: (args: { id: string; cwd: string; name: string }) =>
+    invoke<SessionSummary>("resume_session", { args }),
 };
 
 export async function subscribeSession(

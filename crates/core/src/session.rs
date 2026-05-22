@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, Command};
+use tokio::process::Command;
 use tokio::sync::{broadcast, mpsc};
 use uuid::Uuid;
 
@@ -67,7 +67,6 @@ pub struct Session {
     pub state: Arc<RwLock<SessionState>>,
     events_tx: broadcast::Sender<SessionEvent>,
     stdin_tx: mpsc::Sender<String>,
-    _child: tokio::sync::Mutex<Option<Child>>,
 }
 
 impl Session {
@@ -143,7 +142,7 @@ impl Session {
             }
         });
 
-        // Reader task — sends to raw_tx (not directly to broadcast)
+        // Reader task — owns `child` so it can capture the real exit code
         tokio::spawn({
             async move {
                 let reader = BufReader::new(stdout);
@@ -164,7 +163,11 @@ impl Session {
                         }
                     }
                 }
-                let _ = raw_tx.send(SessionEvent::Closed { code: 0 }).await;
+                let code = match child.wait().await {
+                    Ok(status) => status.code().unwrap_or(0),
+                    Err(_) => -1,
+                };
+                let _ = raw_tx.send(SessionEvent::Closed { code }).await;
             }
         });
 
@@ -176,7 +179,6 @@ impl Session {
             state: Arc::new(RwLock::new(SessionState::Idle)),
             events_tx,
             stdin_tx,
-            _child: tokio::sync::Mutex::new(Some(child)),
         }))
     }
 

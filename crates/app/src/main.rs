@@ -29,6 +29,7 @@ fn main() {
             commands::caffeinate_status,
             commands::list_slash_commands,
             commands::replay_session,
+            commands::resume_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -221,6 +221,44 @@ pub async fn replay_session(
     Ok(())
 }
 
+#[derive(Deserialize)]
+pub struct ResumeArgs {
+    pub id: Uuid,
+    pub cwd: String,
+    pub name: String,
+}
+
+#[tauri::command]
+pub async fn resume_session(
+    app: AppHandle,
+    manager: State<'_, Arc<SessionManager>>,
+    args: ResumeArgs,
+) -> Result<SessionSummary, String> {
+    let cfg = SessionConfig {
+        binary: which_claude(),
+        cwd: PathBuf::from(args.cwd),
+        name: args.name,
+        agent: None,
+        resume_id: Some(args.id),
+    };
+    let session = manager.spawn(cfg).await.map_err(|e| e.to_string())?;
+    let id = session.id;
+    let mut rx = session.subscribe();
+    let app_clone = app.clone();
+    tokio::spawn(async move {
+        while let Ok(ev) = rx.recv().await {
+            let _ = app_clone.emit(&format!("session://{id}"), &ev);
+        }
+    });
+    let mode = session.mode.read().as_cli().to_string();
+    Ok(SessionSummary {
+        id: session.id.to_string(),
+        name: session.name.clone(),
+        cwd: session.cwd.display().to_string(),
+        mode,
+    })
+}
+
 fn which_claude() -> PathBuf {
     if let Ok(p) = std::env::var("CCSHELL_CLAUDE_BIN") {
         return PathBuf::from(p);
