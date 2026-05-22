@@ -34,6 +34,24 @@ export const MessageRow: Component<MessageProps> = (props) => {
             )}
           </For>
         </Show>
+        <Show when={props.message.subagentRefs && props.message.subagentRefs.length > 0}>
+          <div style={{ "margin-top": "6px" }}>
+            <For each={props.message.subagentRefs}>
+              {(id) => (
+                <div style={{
+                  background: "var(--bg-0)",
+                  "border-left": "2px solid var(--tool-subagent)",
+                  padding: "5px 8px",
+                  "border-radius": "3px",
+                  "font-size": "11px",
+                  "margin-top": "3px",
+                }}>
+                  🤖 <b>Agent</b> <span style={{ color: "var(--text-3)" }}>(see right pane · id {id.slice(0, 6)}…)</span>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
       </div>
     </div>
   );
