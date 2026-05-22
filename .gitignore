@@ -1,6 +1,7 @@
 /target
 /ui/dist
 /ui/node_modules
+/crates/app/gen/
 .DS_Store
 *.log
 .superpowers/
