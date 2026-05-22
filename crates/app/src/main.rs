@@ -2,6 +2,7 @@
 
 mod commands;
 
+use ccshell_app::state::{default_path, load_from};
 use ccshell_core::manager::SessionManager;
 use std::sync::Arc;
 
@@ -10,8 +11,13 @@ fn main() {
 
     let manager = Arc::new(SessionManager::new());
 
+    let manifest_path = default_path();
+    let manifest = load_from(&manifest_path).unwrap_or_default();
+
     tauri::Builder::default()
         .manage(manager)
+        .manage(std::sync::Mutex::new(manifest))
+        .manage(manifest_path)
         .invoke_handler(tauri::generate_handler![
             commands::spawn_session,
             commands::send_user_message,

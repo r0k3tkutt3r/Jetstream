@@ -1,9 +1,10 @@
+use ccshell_app::state::{Manifest, ManifestSession, save_to};
 use ccshell_core::agents::AgentRegistry;
 use ccshell_core::manager::SessionManager;
 use ccshell_core::session::{SessionConfig, cycle_mode as core_cycle_mode};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
@@ -27,6 +28,8 @@ pub struct SessionSummary {
 pub async fn spawn_session(
     app: AppHandle,
     manager: State<'_, Arc<SessionManager>>,
+    manifest: State<'_, Mutex<Manifest>>,
+    manifest_path: State<'_, PathBuf>,
     args: SpawnArgs,
 ) -> Result<SessionSummary, String> {
     let cfg = SessionConfig {
@@ -37,6 +40,20 @@ pub async fn spawn_session(
         resume_id: args.resume_id,
     };
     let session = manager.spawn(cfg).await.map_err(|e| e.to_string())?;
+
+    {
+        let mut m = manifest.lock().unwrap();
+        m.sessions.push(ManifestSession {
+            id: session.id.to_string(),
+            cwd: session.cwd.display().to_string(),
+            name: session.name.clone(),
+            created: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        });
+        let _ = save_to(&manifest_path, &m);
+    }
 
     // Fan-out events to the webview
     let id = session.id;
@@ -101,9 +118,19 @@ pub fn list_sessions(manager: State<'_, Arc<SessionManager>>) -> Vec<SessionSumm
 #[tauri::command]
 pub async fn close_session(
     manager: State<'_, Arc<SessionManager>>,
+    manifest: State<'_, Mutex<Manifest>>,
+    manifest_path: State<'_, PathBuf>,
     id: Uuid,
 ) -> Result<(), String> {
-    manager.close(id).await.map_err(|e| e.to_string())
+    manager.close(id).await.map_err(|e| e.to_string())?;
+
+    {
+        let mut m = manifest.lock().unwrap();
+        m.sessions.retain(|s| s.id != id.to_string());
+        let _ = save_to(&manifest_path, &m);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
