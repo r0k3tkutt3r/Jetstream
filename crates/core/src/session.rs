@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::{broadcast, mpsc};
+use tracing::{info_span, Instrument};
 use uuid::Uuid;
 
 pub const EVENT_CHANNEL_CAP: usize = 1024;
@@ -144,7 +145,7 @@ impl Session {
 
         // Reader task — owns `child` so it can capture the real exit code
         tokio::spawn({
-            async move {
+            let reader_loop = async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
@@ -168,7 +169,8 @@ impl Session {
                     Err(_) => -1,
                 };
                 let _ = raw_tx.send(SessionEvent::Closed { code }).await;
-            }
+            };
+            reader_loop.instrument(info_span!("session.reader", session_id = %id))
         });
 
         Ok(Arc::new(Self {
