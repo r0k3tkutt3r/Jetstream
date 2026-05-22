@@ -182,6 +182,45 @@ fn sc(name: &str, desc: &str, hint: Option<&str>) -> SlashCommand {
     }
 }
 
+#[tauri::command]
+pub async fn replay_session(
+    app: AppHandle,
+    manifest: State<'_, std::sync::Mutex<Manifest>>,
+    id: Uuid,
+) -> Result<(), String> {
+    use ccshell_core::session::replay_jsonl;
+
+    let session = {
+        let manifest_guard = manifest.lock().unwrap();
+        manifest_guard
+            .sessions
+            .iter()
+            .find(|s| s.id == id.to_string())
+            .ok_or("no such session in manifest")?
+            .clone()
+    };
+
+    let encoded_cwd = session.cwd.replace('/', "-");
+    let path = dirs::home_dir()
+        .ok_or("no home dir")?
+        .join(format!(".claude/projects/{encoded_cwd}/{id}.jsonl"));
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel(256);
+    tokio::spawn(async move {
+        let _ = replay_jsonl(&path, tx).await;
+    });
+
+    let app_clone = app.clone();
+    let topic = format!("session://{id}");
+    tokio::spawn(async move {
+        while let Some(ev) = rx.recv().await {
+            let _ = app_clone.emit(&topic, &ev);
+        }
+    });
+
+    Ok(())
+}
+
 fn which_claude() -> PathBuf {
     if let Ok(p) = std::env::var("CCSHELL_CLAUDE_BIN") {
         return PathBuf::from(p);

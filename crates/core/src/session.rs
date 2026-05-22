@@ -208,6 +208,26 @@ impl Session {
     }
 }
 
+/// Parse a JSONL transcript file and yield the same SessionEvents the live
+/// reader produces. Errors are best-effort — bad lines are skipped.
+pub async fn replay_jsonl(
+    path: &std::path::Path,
+    tx: tokio::sync::mpsc::Sender<SessionEvent>,
+) -> std::io::Result<()> {
+    let file = tokio::fs::File::open(path).await?;
+    let reader = tokio::io::BufReader::new(file);
+    let mut lines = tokio::io::AsyncBufReadExt::lines(reader);
+    while let Ok(Some(line)) = lines.next_line().await {
+        if line.trim().is_empty() { continue; }
+        if let Ok(evt) = parse_line(&line) {
+            for e in map_event(evt) {
+                if tx.send(e).await.is_err() { return Ok(()); }
+            }
+        }
+    }
+    Ok(())
+}
+
 use std::collections::{BTreeMap, HashMap};
 use tokio::time::interval;
 

@@ -29,6 +29,9 @@ export const ipc = {
 
   listSlashCommands: () =>
     invoke<SlashCommand[]>("list_slash_commands"),
+
+  replaySession: (id: string) =>
+    invoke<void>("replay_session", { id }),
 };
 
 export async function subscribeSession(
