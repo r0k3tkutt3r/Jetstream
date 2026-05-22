@@ -1,7 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
-mod state;
 
 use ccshell_core::manager::SessionManager;
 use std::sync::Arc;

@@ -18,6 +18,13 @@ tracing      = { workspace = true }
 tracing-subscriber = { workspace = true }
 dirs         = "5"
 
+[lib]
+name = "ccshell_app"
+path = "src/lib.rs"
+
+[dev-dependencies]
+tempfile = "3"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
