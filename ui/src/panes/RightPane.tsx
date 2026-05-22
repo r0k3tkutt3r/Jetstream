@@ -1,4 +1,4 @@
-import { Component, For, Show, createResource, createSignal } from "solid-js";
+import { Component, For, Show, createResource, createSignal, onCleanup } from "solid-js";
 import { ipc } from "../ipc/bridge";
 import type { SessionStore } from "../state/session-store";
 
@@ -7,11 +7,12 @@ export interface RightPaneProps {
 }
 
 export const RightPane: Component<RightPaneProps> = (props) => {
-  const [caf] = createResource(() => ipc.caffeinateStatus());
+  // Re-poll every 2s; tick is the resource source so it triggers refetch
+  const [tick, setTick] = createSignal(0);
+  const tickInterval = setInterval(() => setTick((t) => t + 1), 2000);
+  onCleanup(() => clearInterval(tickInterval));
 
-  // Re-poll every 2s
-  const [, setTick] = createSignal(0);
-  setInterval(() => setTick((t) => t + 1), 2000);
+  const [caf] = createResource(tick, () => ipc.caffeinateStatus());
 
   const active = () => Object.values(props.session?.subagents() ?? {}).filter((s) => !s.completed);
   const done   = () => Object.values(props.session?.subagents() ?? {}).filter((s) =>  s.completed).slice(-5);
