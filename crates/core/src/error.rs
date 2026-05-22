@@ -11,7 +11,11 @@ pub enum SessionError {
     UnexpectedExit(i32),
 
     #[error("stream-json parse failure on line {line}: {source}")]
-    ParseError { line: u64, #[source] source: serde_json::Error },
+    ParseError {
+        line: u64,
+        #[source]
+        source: serde_json::Error,
+    },
 
     #[error("control request timed out after {:?}", .0)]
     ControlTimeout(Duration),

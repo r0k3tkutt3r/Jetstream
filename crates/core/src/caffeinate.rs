@@ -3,9 +3,9 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
 pub struct CaffeinateCtl {
-    binary:   String,
-    args:     Vec<&'static str>,
-    child:    Mutex<Option<Child>>,
+    binary: String,
+    args: Vec<&'static str>,
+    child: Mutex<Option<Child>>,
     refcount: AtomicUsize,
 }
 
@@ -23,13 +23,19 @@ impl CaffeinateCtl {
     pub fn new_with_binary(binary: &str) -> Self {
         Self {
             binary: binary.to_string(),
-            args: if binary.ends_with("/caffeinate") { vec!["-dimsu"] } else { vec![] },
+            args: if binary.ends_with("/caffeinate") {
+                vec!["-dimsu"]
+            } else {
+                vec![]
+            },
             child: Mutex::new(None),
             refcount: AtomicUsize::new(0),
         }
     }
 
-    pub fn refcount(&self) -> usize { self.refcount.load(SeqCst) }
+    pub fn refcount(&self) -> usize {
+        self.refcount.load(SeqCst)
+    }
 
     pub fn pid(&self) -> Option<u32> {
         self.child.lock().as_ref().map(|c| c.id())
@@ -51,8 +57,14 @@ impl CaffeinateCtl {
     pub fn release(&self) {
         loop {
             let cur = self.refcount.load(SeqCst);
-            if cur == 0 { return; }
-            if self.refcount.compare_exchange(cur, cur - 1, SeqCst, SeqCst).is_ok() {
+            if cur == 0 {
+                return;
+            }
+            if self
+                .refcount
+                .compare_exchange(cur, cur - 1, SeqCst, SeqCst)
+                .is_ok()
+            {
                 if cur == 1 {
                     if let Some(mut c) = self.child.lock().take() {
                         let _ = c.kill();

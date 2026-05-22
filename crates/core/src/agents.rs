@@ -29,7 +29,9 @@ impl AgentRegistry {
     pub fn scan(paths: &[PathBuf]) -> Self {
         let mut by_name = BTreeMap::new();
         for path in paths {
-            let Ok(entries) = std::fs::read_dir(path) else { continue };
+            let Ok(entries) = std::fs::read_dir(path) else {
+                continue;
+            };
             for entry in entries.flatten() {
                 let p = entry.path();
                 if p.extension().and_then(|s| s.to_str()) != Some("md") {

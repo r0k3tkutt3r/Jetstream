@@ -4,8 +4,7 @@ use std::time::Duration;
 use tokio::time::timeout;
 
 fn fake_claude() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fakes/fake_claude.sh")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fakes/fake_claude.sh")
 }
 
 #[tokio::test]
@@ -23,11 +22,16 @@ async fn spawns_and_emits_events_until_result() {
     let mut saw_assistant = false;
     let mut saw_result = false;
     for _ in 0..20 {
-        let ev = timeout(Duration::from_secs(2), rx.recv()).await
-            .expect("event timeout").expect("recv");
+        let ev = timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("event timeout")
+            .expect("recv");
         match ev {
             SessionEvent::Assistant { .. } => saw_assistant = true,
-            SessionEvent::Result { .. } => { saw_result = true; break; }
+            SessionEvent::Result { .. } => {
+                saw_result = true;
+                break;
+            }
             _ => {}
         }
     }

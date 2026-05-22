@@ -1,10 +1,10 @@
 #![forbid(unsafe_code)]
 
-pub mod protocol;
-pub mod error;
-pub mod caffeinate;
 pub mod agents;
-pub mod session;
+pub mod caffeinate;
+pub mod error;
 pub mod manager;
+pub mod protocol;
+pub mod session;
 
 pub use error::SessionError;

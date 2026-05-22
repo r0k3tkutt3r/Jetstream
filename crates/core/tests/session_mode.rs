@@ -1,4 +1,4 @@
-use ccshell_core::session::{PermissionMode, cycle_mode, render_mode_control};
+use ccshell_core::session::{cycle_mode, render_mode_control, PermissionMode};
 
 #[test]
 fn cycle_order() {

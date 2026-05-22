@@ -29,6 +29,6 @@ fn double_release_is_safe() {
     let c = CaffeinateCtl::new_with_binary("/usr/bin/yes");
     c.acquire();
     c.release();
-    c.release();   // no panic
+    c.release(); // no panic
     assert_eq!(c.refcount(), 0);
 }

@@ -1,4 +1,4 @@
-use ccshell_app::state::{Manifest, ManifestSession, save_to, load_from};
+use ccshell_app::state::{load_from, save_to, Manifest, ManifestSession};
 use tempfile::tempdir;
 
 #[test]

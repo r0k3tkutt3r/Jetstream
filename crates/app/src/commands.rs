@@ -1,7 +1,7 @@
-use ccshell_app::state::{Manifest, ManifestSession, save_to};
+use ccshell_app::state::{save_to, Manifest, ManifestSession};
 use ccshell_core::agents::AgentRegistry;
 use ccshell_core::manager::SessionManager;
-use ccshell_core::session::{SessionConfig, cycle_mode as core_cycle_mode};
+use ccshell_core::session::{cycle_mode as core_cycle_mode, SessionConfig};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -80,7 +80,10 @@ pub async fn send_user_message(
     text: String,
 ) -> Result<(), String> {
     let session = manager.get(id).ok_or("no such session")?;
-    session.send_user_text(&text).await.map_err(|e| e.to_string())
+    session
+        .send_user_text(&text)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -91,28 +94,36 @@ pub async fn cycle_mode(
     let session = manager.get(id).ok_or("no such session")?;
     let current = session.mode.read().clone();
     let next = core_cycle_mode(current);
-    session.set_mode(next.clone()).await.map_err(|e| e.to_string())?;
+    session
+        .set_mode(next.clone())
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(next.as_cli().to_string())
 }
 
 #[tauri::command]
-pub async fn interrupt(
-    manager: State<'_, Arc<SessionManager>>,
-    id: Uuid,
-) -> Result<(), String> {
+pub async fn interrupt(manager: State<'_, Arc<SessionManager>>, id: Uuid) -> Result<(), String> {
     let session = manager.get(id).ok_or("no such session")?;
-    let payload = "{\"type\":\"control_request\",\"request\":{\"subtype\":\"interrupt\"}}\n".to_string();
-    session.send_raw_line(payload).await.map_err(|e| e.to_string())
+    let payload =
+        "{\"type\":\"control_request\",\"request\":{\"subtype\":\"interrupt\"}}\n".to_string();
+    session
+        .send_raw_line(payload)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn list_sessions(manager: State<'_, Arc<SessionManager>>) -> Vec<SessionSummary> {
-    manager.list().into_iter().map(|s| SessionSummary {
-        id: s.id.to_string(),
-        name: s.name.clone(),
-        cwd: s.cwd.display().to_string(),
-        mode: s.mode.read().as_cli().to_string(),
-    }).collect()
+    manager
+        .list()
+        .into_iter()
+        .map(|s| SessionSummary {
+            id: s.id.to_string(),
+            name: s.name.clone(),
+            cwd: s.cwd.display().to_string(),
+            mode: s.mode.read().as_cli().to_string(),
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -140,7 +151,11 @@ pub fn list_agents() -> Vec<ccshell_core::agents::Agent> {
         paths.push(home.join(".claude/agents"));
     }
     paths.push(PathBuf::from(".claude/agents"));
-    AgentRegistry::scan(&paths).agents().into_iter().cloned().collect()
+    AgentRegistry::scan(&paths)
+        .agents()
+        .into_iter()
+        .cloned()
+        .collect()
 }
 
 #[tauri::command]
@@ -161,16 +176,16 @@ pub struct SlashCommand {
 #[tauri::command]
 pub fn list_slash_commands() -> Vec<SlashCommand> {
     vec![
-        sc("agents",  "Manage subagents",                  None),
-        sc("clear",   "Clear conversation history",        None),
+        sc("agents", "Manage subagents", None),
+        sc("clear", "Clear conversation history", None),
         sc("compact", "Summarize history to free context", None),
-        sc("model",   "Switch model for this session",     Some("<model>")),
-        sc("mcp",     "Manage MCP servers",                None),
-        sc("plugin",  "Manage Claude Code plugins",        None),
-        sc("resume",  "Resume a previous session",         Some("[query]")),
-        sc("help",    "Show help",                         None),
-        sc("init",    "Initialize CLAUDE.md",              None),
-        sc("review",  "Review a pull request",             Some("[pr]")),
+        sc("model", "Switch model for this session", Some("<model>")),
+        sc("mcp", "Manage MCP servers", None),
+        sc("plugin", "Manage Claude Code plugins", None),
+        sc("resume", "Resume a previous session", Some("[query]")),
+        sc("help", "Show help", None),
+        sc("init", "Initialize CLAUDE.md", None),
+        sc("review", "Review a pull request", Some("[pr]")),
     ]
 }
 

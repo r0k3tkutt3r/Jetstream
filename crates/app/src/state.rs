@@ -79,8 +79,7 @@ pub fn load_from(path: &Path) -> std::io::Result<Manifest> {
         return Ok(Manifest::default());
     }
     let s = std::fs::read_to_string(path)?;
-    serde_json::from_str(&s)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+    serde_json::from_str(&s).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
 pub fn save_to(path: &Path, manifest: &Manifest) -> std::io::Result<()> {

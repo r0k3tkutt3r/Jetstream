@@ -1,4 +1,4 @@
-use ccshell_core::protocol::{StreamJsonEvent, parse_line};
+use ccshell_core::protocol::{parse_line, StreamJsonEvent};
 use std::path::PathBuf;
 
 fn fixture(name: &str) -> String {
@@ -28,11 +28,18 @@ fn parses_tool_use_and_result() {
     for line in fixture("tool_use.jsonl").lines() {
         match parse_line(line).expect("parse") {
             StreamJsonEvent::Assistant { message }
-                if message.content.iter().any(|b| matches!(b, ccshell_core::protocol::ContentBlock::ToolUse { .. })) => {
+                if message
+                    .content
+                    .iter()
+                    .any(|b| matches!(b, ccshell_core::protocol::ContentBlock::ToolUse { .. })) =>
+            {
                 seen_tool_use = true;
             }
             StreamJsonEvent::User { message }
-                if message.content.iter().any(|b| matches!(b, ccshell_core::protocol::ContentBlock::ToolResult { .. })) => {
+                if message.content.iter().any(|b| {
+                    matches!(b, ccshell_core::protocol::ContentBlock::ToolResult { .. })
+                }) =>
+            {
                 seen_tool_result = true;
             }
             _ => {}
@@ -47,16 +54,25 @@ fn parses_subagent_hook_events() {
     let content = fixture("subagent_start.jsonl");
     let lines: Vec<_> = content.lines().collect();
     let start = parse_line(lines[0]).expect("parse start");
-    let stop  = parse_line(lines[1]).expect("parse stop");
-    assert!(matches!(start, StreamJsonEvent::Hook { ref hook_event_name, .. } if hook_event_name == "SubagentStart"));
-    assert!(matches!(stop,  StreamJsonEvent::Hook { ref hook_event_name, .. } if hook_event_name == "SubagentStop"));
+    let stop = parse_line(lines[1]).expect("parse stop");
+    assert!(
+        matches!(start, StreamJsonEvent::Hook { ref hook_event_name, .. } if hook_event_name == "SubagentStart")
+    );
+    assert!(
+        matches!(stop,  StreamJsonEvent::Hook { ref hook_event_name, .. } if hook_event_name == "SubagentStop")
+    );
 }
 
 #[test]
 fn parses_result_event() {
     let line = fixture("result.jsonl");
     let evt = parse_line(line.trim()).expect("parse");
-    let StreamJsonEvent::Result { total_cost_usd, usage, .. } = evt else {
+    let StreamJsonEvent::Result {
+        total_cost_usd,
+        usage,
+        ..
+    } = evt
+    else {
         panic!("expected Result");
     };
     assert!((total_cost_usd - 0.018).abs() < 1e-9);

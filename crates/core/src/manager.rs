@@ -8,7 +8,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct SessionManager {
-    sessions:   RwLock<HashMap<Uuid, Arc<Session>>>,
+    sessions: RwLock<HashMap<Uuid, Arc<Session>>>,
     caffeinate: Arc<CaffeinateCtl>,
 }
 
