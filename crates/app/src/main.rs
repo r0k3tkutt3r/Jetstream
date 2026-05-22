@@ -21,6 +21,7 @@ fn main() {
             commands::close_session,
             commands::list_agents,
             commands::caffeinate_status,
+            commands::list_slash_commands,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

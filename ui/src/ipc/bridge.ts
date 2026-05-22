@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Agent, CaffeinateStatus, PermissionMode, SessionEvent, SessionSummary } from "./types";
+import type { Agent, CaffeinateStatus, PermissionMode, SessionEvent, SessionSummary, SlashCommand } from "./types";
 
 export const ipc = {
   spawnSession: (args: { cwd: string; name: string; agent?: string; resume_id?: string }) =>
@@ -26,6 +26,9 @@ export const ipc = {
 
   caffeinateStatus: () =>
     invoke<CaffeinateStatus>("caffeinate_status"),
+
+  listSlashCommands: () =>
+    invoke<SlashCommand[]>("list_slash_commands"),
 };
 
 export async function subscribeSession(

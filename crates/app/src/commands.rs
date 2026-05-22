@@ -124,6 +124,37 @@ pub fn caffeinate_status(manager: State<'_, Arc<SessionManager>>) -> serde_json:
     })
 }
 
+#[derive(serde::Serialize)]
+pub struct SlashCommand {
+    pub name: String,
+    pub description: String,
+    pub argument_hint: Option<String>,
+}
+
+#[tauri::command]
+pub fn list_slash_commands() -> Vec<SlashCommand> {
+    vec![
+        sc("agents",  "Manage subagents",                  None),
+        sc("clear",   "Clear conversation history",        None),
+        sc("compact", "Summarize history to free context", None),
+        sc("model",   "Switch model for this session",     Some("<model>")),
+        sc("mcp",     "Manage MCP servers",                None),
+        sc("plugin",  "Manage Claude Code plugins",        None),
+        sc("resume",  "Resume a previous session",         Some("[query]")),
+        sc("help",    "Show help",                         None),
+        sc("init",    "Initialize CLAUDE.md",              None),
+        sc("review",  "Review a pull request",             Some("[pr]")),
+    ]
+}
+
+fn sc(name: &str, desc: &str, hint: Option<&str>) -> SlashCommand {
+    SlashCommand {
+        name: name.into(),
+        description: desc.into(),
+        argument_hint: hint.map(|s| s.into()),
+    }
+}
+
 fn which_claude() -> PathBuf {
     if let Ok(p) = std::env::var("CCSHELL_CLAUDE_BIN") {
         return PathBuf::from(p);

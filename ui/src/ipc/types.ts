@@ -36,3 +36,9 @@ export interface CaffeinateStatus {
   active: boolean;
   refcount: number;
 }
+
+export interface SlashCommand {
+  name: string;
+  description: string;
+  argument_hint: string | null;
+}
