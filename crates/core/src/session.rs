@@ -195,8 +195,38 @@ impl Session {
     }
 }
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use tokio::time::interval;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SubagentRecord {
+    pub id:        String,
+    pub agent:     String,
+    pub prompt:    String,
+    pub completed: bool,
+    pub result:    Option<serde_json::Value>,
+}
+
+pub fn project_subagents<I: IntoIterator<Item = SessionEvent>>(iter: I) -> BTreeMap<String, SubagentRecord> {
+    let mut map = BTreeMap::new();
+    for ev in iter {
+        match ev {
+            SessionEvent::SubagentStart { id, agent, prompt } => {
+                map.insert(id.clone(), SubagentRecord {
+                    id, agent, prompt, completed: false, result: None,
+                });
+            }
+            SessionEvent::SubagentStop { id, result } => {
+                if let Some(rec) = map.get_mut(&id) {
+                    rec.completed = true;
+                    rec.result = Some(result);
+                }
+            }
+            _ => {}
+        }
+    }
+    map
+}
 
 /// Merges Assistant text deltas keyed by msg_id, flushing at most every `tick`.
 /// Pass-through for all other variants.
