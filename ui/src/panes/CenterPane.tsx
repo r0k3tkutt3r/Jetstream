@@ -1,5 +1,6 @@
-import { Component, For, Show, createSignal } from "solid-js";
+import { Component, Show, createSignal } from "solid-js";
 import type { SessionStore } from "../state/session-store";
+import { MessageList } from "../render/MessageList";
 
 export interface CenterPaneProps {
   session: SessionStore | null;
@@ -47,21 +48,10 @@ export const CenterPane: Component<CenterPaneProps> = (props) => {
           </div>
         </div>
 
-        <div class="pane-body">
-          <For each={props.session!.messages()}>
-            {(m) => (
-              <div style={{ "margin-bottom": "10px" }}>
-                <div class="section-label">{m.role}</div>
-                <div style={{
-                  background: m.role === "user" ? "var(--bg-3)" : "var(--bg-2)",
-                  padding: "8px 10px",
-                  "border-radius": "6px",
-                  "white-space": "pre-wrap",
-                }}>{m.content}</div>
-              </div>
-            )}
-          </For>
-        </div>
+        <MessageList
+          messages={props.session!.messages()}
+          scrollRef={(el) => { /* parked for auto-scroll in Task 20 */ }}
+        />
 
         <div style={{ "border-top": "1px solid var(--border)", padding: "8px 12px" }}>
           <textarea
