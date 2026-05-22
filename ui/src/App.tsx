@@ -1,5 +1,6 @@
 import { Component, createEffect, createSignal, onCleanup } from "solid-js";
 import { Layout } from "./panes/Layout";
+import { Settings } from "./settings/Settings";
 import { ipc, subscribeSession } from "./ipc/bridge";
 import { createSessionStore, type SessionStore } from "./state/session-store";
 import type { SessionSummary } from "./ipc/types";
@@ -10,6 +11,10 @@ export const App: Component = () => {
   const [activeId, setActiveId] = createSignal<string | null>(null);
   const [showLeft, setShowLeft] = createSignal(true);
   const [showRight, setShowRight] = createSignal(true);
+  const [settingsOpen, setSettingsOpen] = createSignal(false);
+  const [theme, setTheme] = createSignal<"dark" | "light">("dark");
+  const [fontFamily, setFontFamily] = createSignal("JetBrains Mono");
+  const [fontSize, setFontSize] = createSignal(13);
 
   const refresh = async () => setSessions(await ipc.listSessions());
 
@@ -44,30 +49,40 @@ export const App: Component = () => {
       if (e.metaKey && e.key === "b")   { e.preventDefault(); setShowLeft(!showLeft());  return; }
       if (e.metaKey && e.key === "j")   { e.preventDefault(); setShowRight(!showRight()); return; }
       if (e.metaKey && e.key === "n")   { e.preventDefault(); void newSession();         return; }
+      if (e.metaKey && e.key === ",")   { e.preventDefault(); setSettingsOpen(true);     return; }
     };
     window.addEventListener("keydown", handler);
     onCleanup(() => window.removeEventListener("keydown", handler));
   });
 
   return (
-    <Layout
-      showLeft={showLeft()}
-      showRight={showRight()}
-      left={{
-        sessions: sessions(),
-        activeId: activeId(),
-        onSelectSession: setActiveId,
-        onNewSession: () => void newSession(),
-        onSelectAgent: () => {},
-      }}
-      center={{
-        session: activeId() ? stores()[activeId()!] ?? null : null,
-        onSend: (t) => void send(t),
-        onCycleMode: () => void cycle(),
-      }}
-      right={{
-        session: activeId() ? stores()[activeId()!] ?? null : null,
-      }}
-    />
+    <>
+      <Layout
+        showLeft={showLeft()}
+        showRight={showRight()}
+        left={{
+          sessions: sessions(),
+          activeId: activeId(),
+          onSelectSession: setActiveId,
+          onNewSession: () => void newSession(),
+          onSelectAgent: () => {},
+        }}
+        center={{
+          session: activeId() ? stores()[activeId()!] ?? null : null,
+          onSend: (t) => void send(t),
+          onCycleMode: () => void cycle(),
+        }}
+        right={{
+          session: activeId() ? stores()[activeId()!] ?? null : null,
+        }}
+      />
+      <Settings
+        open={settingsOpen()}
+        onClose={() => setSettingsOpen(false)}
+        theme={theme()}  onSetTheme={setTheme}
+        fontFamily={fontFamily()} onSetFontFamily={setFontFamily}
+        fontSize={fontSize()}     onSetFontSize={setFontSize}
+      />
+    </>
   );
 };
