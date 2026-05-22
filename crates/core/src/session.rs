@@ -201,6 +201,11 @@ impl Session {
         *self.mode.write() = mode;
         Ok(())
     }
+
+    pub async fn send_raw_line(&self, line: String) -> Result<(), SessionError> {
+        self.stdin_tx.send(line).await.map_err(|_| SessionError::UnexpectedExit(0))?;
+        Ok(())
+    }
 }
 
 use std::collections::{BTreeMap, HashMap};

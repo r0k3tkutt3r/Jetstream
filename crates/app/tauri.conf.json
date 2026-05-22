@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CCShell",
+  "version": "0.1.0",
+  "identifier": "dev.ccshell",
+  "build": {
+    "frontendDist": "../../ui/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "pnpm --dir ../../ui dev",
+    "beforeBuildCommand": "pnpm --dir ../../ui build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "CCShell",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 600,
+        "decorations": true,
+        "titleBarStyle": "Overlay"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": ["icons/icon.icns"],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    }
+  }
+}
