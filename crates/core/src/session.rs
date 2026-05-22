@@ -193,6 +193,14 @@ impl Session {
             .map_err(|_| SessionError::UnexpectedExit(0))?;
         Ok(())
     }
+
+    pub async fn set_mode(&self, mode: PermissionMode) -> Result<(), SessionError> {
+        let line = render_mode_control(mode.clone());
+        self.stdin_tx.send(line).await
+            .map_err(|_| SessionError::UnexpectedExit(0))?;
+        *self.mode.write() = mode;
+        Ok(())
+    }
 }
 
 use std::collections::{BTreeMap, HashMap};
@@ -267,6 +275,26 @@ pub async fn coalesce_deltas(
         }
     }
 }
+
+pub fn cycle_mode(current: PermissionMode) -> PermissionMode {
+    match current {
+        PermissionMode::BypassPermissions => PermissionMode::Plan,
+        PermissionMode::Plan              => PermissionMode::AcceptEdits,
+        PermissionMode::AcceptEdits       => PermissionMode::BypassPermissions,
+        PermissionMode::Default           => PermissionMode::BypassPermissions,
+    }
+}
+
+pub fn render_mode_control(mode: PermissionMode) -> String {
+    let v = serde_json::json!({
+        "type": "control_request",
+        "request": { "subtype": "set_permission_mode", "mode": mode.as_cli() }
+    });
+    format!("{v}\n")
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ModeStrategy { ControlRequest, Respawn }
 
 fn map_event(evt: StreamJsonEvent) -> Vec<SessionEvent> {
     match evt {
