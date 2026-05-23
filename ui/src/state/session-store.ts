@@ -27,6 +27,13 @@ export interface SubagentRecord {
   result?: unknown;
 }
 
+export interface Todo {
+  subject: string;
+  description: string;
+  activeForm?: string;
+  status: "pending" | "in_progress" | "completed";
+}
+
 export type SessionStatus = "idle" | "thinking" | "tool" | "error" | "closed";
 
 export interface SessionStore {
@@ -42,10 +49,18 @@ export interface SessionStore {
   cost: Accessor<number>;
   cumulativeTokens: Accessor<number>;
   queue: Accessor<string[]>;
+  history: Accessor<string[]>;
+  pushHistory: (text: string) => void;
   lastActivity: Accessor<string | null>;
+  turnStartedAt: Accessor<number | null>;
+  turnInputTokens: Accessor<number>;
+  turnOutputTokens: Accessor<number>;
+  todos: Accessor<Todo[]>;
 
   handleEvent: (e: SessionEvent) => void;
   appendUserMessage: (text: string) => void;
+  appendSyntheticAssistant: (text: string) => void;
+  markRespawning: () => void;
   enqueue: (text: string) => void;
   drainQueue: () => string[];
   reset: () => void;
@@ -67,9 +82,41 @@ export function createSessionStore(init: InitArgs): SessionStore {
   const [cost, setCost] = createSignal<number>(0);
   const [cumulativeTokens, setCumulativeTokens] = createSignal<number>(0);
   const [queue, setQueue] = createStore<string[]>([]);
+  const [history, setHistory] = createSignal<string[]>([]);
+  const HISTORY_CAP = 5;
+  function pushHistory(text: string) {
+    const t = text.trim();
+    if (!t) return;
+    setHistory((cur) => {
+      const without = cur.filter((x) => x !== t);
+      const next = [...without, t];
+      return next.length > HISTORY_CAP ? next.slice(next.length - HISTORY_CAP) : next;
+    });
+  }
   const [lastActivity, setLastActivity] = createSignal<string | null>(null);
+  const [turnStartedAt, setTurnStartedAt] = createSignal<number | null>(null);
+  const [turnInputTokens, setTurnInputTokens] = createSignal<number>(0);
+  const [turnOutputTokens, setTurnOutputTokens] = createSignal<number>(0);
+  const [todos, setTodos] = createSignal<Todo[]>([]);
+
+  function markTurnStart() {
+    if (turnStartedAt() === null) {
+      setTurnStartedAt(Date.now());
+      setTurnInputTokens(0);
+      setTurnOutputTokens(0);
+    }
+  }
+  function markTurnEnd() {
+    setTurnStartedAt(null);
+    setTurnInputTokens(0);
+    setTurnOutputTokens(0);
+  }
 
   let userCounter = 0;
+  let respawning = false;
+  function markRespawning() {
+    respawning = true;
+  }
 
   function handleEvent(e: SessionEvent) {
     switch (e.type) {
@@ -88,6 +135,7 @@ export function createSessionStore(init: InitArgs): SessionStore {
         }));
         setStatus("thinking");
         setLastActivity("responding");
+        markTurnStart();
         break;
       }
       case "Tool": {
@@ -98,8 +146,19 @@ export function createSessionStore(init: InitArgs): SessionStore {
             last.tools.push({ id: e.id, name: e.name, input: e.input });
           }
         }));
+        if (e.name === "TodoWrite") {
+          const input = e.input as { todos?: unknown } | null;
+          if (input && Array.isArray(input.todos)) {
+            setTodos(input.todos.filter((t): t is Todo =>
+              !!t && typeof t === "object"
+              && typeof (t as Todo).subject === "string"
+              && typeof (t as Todo).status === "string"
+            ));
+          }
+        }
         setStatus("tool");
         setLastActivity(`${e.name}…`);
+        markTurnStart();
         break;
       }
       case "ToolResult": {
@@ -147,10 +206,36 @@ export function createSessionStore(init: InitArgs): SessionStore {
         setCumulativeTokens((n) => n + turnTokens);
         setStatus("idle");
         setLastActivity(null);
+        markTurnEnd();
         break;
       }
-      case "Error": setStatus("error"); setLastActivity("error"); break;
-      case "Closed": setStatus("closed"); setLastActivity("closed"); break;
+      case "TurnUpdate": {
+        if (e.input_tokens > 0) setTurnInputTokens(e.input_tokens);
+        if (e.output_tokens > 0) setTurnOutputTokens(e.output_tokens);
+        // Receiving a TurnUpdate before any Assistant/Tool event means we
+        // arrived via message_start during the "loading" phase — mark turn
+        // start so the elapsed timer is shown.
+        markTurnStart();
+        break;
+      }
+      case "Error": setStatus("error"); setLastActivity("error"); markTurnEnd(); break;
+      case "Closed":
+        if (respawning) {
+          // Suppress the Closed produced by the old child during model switch.
+          respawning = false;
+          markTurnEnd();
+          break;
+        }
+        setStatus("closed");
+        setLastActivity("closed");
+        markTurnEnd();
+        break;
+      case "Resync":
+        respawning = false;
+        setStatus("idle");
+        setLastActivity(null);
+        markTurnEnd();
+        break;
       default: break;
     }
   }
@@ -159,6 +244,14 @@ export function createSessionStore(init: InitArgs): SessionStore {
     userCounter += 1;
     setMessages(produce((draft) => {
       draft.push({ id: `user-${userCounter}`, role: "user", content: text });
+    }));
+  }
+
+  let syntheticCounter = 0;
+  function appendSyntheticAssistant(text: string) {
+    syntheticCounter += 1;
+    setMessages(produce((draft) => {
+      draft.push({ id: `synth-${syntheticCounter}`, role: "assistant", content: text });
     }));
   }
 
@@ -181,6 +274,7 @@ export function createSessionStore(init: InitArgs): SessionStore {
     setQueue([]);
     setStatus("idle");
     setLastActivity(null);
+    setTodos([]);
   }
 
   return {
@@ -196,9 +290,17 @@ export function createSessionStore(init: InitArgs): SessionStore {
     cost,
     cumulativeTokens,
     queue: () => queue,
+    history,
+    pushHistory,
     lastActivity,
+    turnStartedAt,
+    turnInputTokens,
+    turnOutputTokens,
+    todos,
     handleEvent,
     appendUserMessage,
+    appendSyntheticAssistant,
+    markRespawning,
     enqueue,
     drainQueue,
     reset,

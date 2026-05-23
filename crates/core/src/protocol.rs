@@ -112,6 +112,9 @@ pub enum StreamDelta {
     ContentBlockStop {
         index: u32,
     },
+    MessageStart {
+        message: StartMessage,
+    },
     MessageDelta {
         delta: Value,
         usage: Option<Usage>,
@@ -119,6 +122,14 @@ pub enum StreamDelta {
     MessageStop,
     #[serde(other)]
     Other,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StartMessage {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub usage: Option<Usage>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

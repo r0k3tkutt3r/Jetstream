@@ -34,6 +34,7 @@ fn main() {
             commands::interrupt,
             commands::list_sessions,
             commands::close_session,
+            commands::switch_model,
             commands::list_agents,
             commands::get_default_cwd,
             commands::caffeinate_status,
@@ -47,6 +48,8 @@ fn main() {
             commands::set_directory_config,
             commands::pick_directory,
             commands::run_directory_command,
+            commands::get_preferences,
+            commands::set_preferences,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

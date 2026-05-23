@@ -3,6 +3,7 @@ import { Layout } from "./panes/Layout";
 import { Settings } from "./settings/Settings";
 import { ipc, subscribeSession } from "./ipc/bridge";
 import { createSessionStore, type SessionStore } from "./state/session-store";
+import { dispatchSlash } from "./composer/slash-handlers";
 import type { SessionSummary } from "./ipc/types";
 
 interface Toast {
@@ -24,6 +25,9 @@ export const App: Component = () => {
   const [currentCwd, setCurrentCwd] = createSignal<string>("");
   const [refreshKey, setRefreshKey] = createSignal(0);
   const [toasts, setToasts] = createSignal<Toast[]>([]);
+  const [model, setModel] = createSignal<string>("sonnet");
+  const [effort, setEffort] = createSignal<string>("medium");
+  let prefsLoaded = false;
   let toastCounter = 0;
 
   const pushToast = (kind: "success" | "error", title: string, body: string) => {
@@ -39,18 +43,31 @@ export const App: Component = () => {
     const last = await ipc.getLastCwd().catch(() => null);
     if (last && !currentCwd()) {
       setCurrentCwd(last);
-      return;
-    }
-    if (!currentCwd()) {
+    } else if (!currentCwd()) {
       const home = await ipc.getDefaultCwd().catch(() => "");
       if (home && !currentCwd()) setCurrentCwd(home);
     }
+
+    const prefs = await ipc.getPreferences().catch(() => null);
+    if (prefs) {
+      if (prefs.model) setModel(prefs.model);
+      if (prefs.effort) setEffort(prefs.effort);
+    }
+    prefsLoaded = true;
   })();
 
   // Persist cwd when it changes (skip the empty initial value).
   createEffect(() => {
     const cwd = currentCwd();
     if (cwd) void ipc.setLastCwd(cwd).catch(() => {});
+  });
+
+  // Persist model/effort whenever they change after initial load.
+  createEffect(() => {
+    const m = model();
+    const e = effort();
+    if (!prefsLoaded) return;
+    void ipc.setPreferences({ model: m, effort: e }).catch(() => {});
   });
 
   // Clear activeId if it points to a session not in the current cwd.
@@ -75,7 +92,12 @@ export const App: Component = () => {
 
   const newSession = async () => {
     try {
-      const s = await ipc.spawnSession({ cwd: currentCwd(), name: `session-${Object.keys(stores()).length + 1}` });
+      const s = await ipc.spawnSession({
+        cwd: currentCwd(),
+        name: `session-${Object.keys(stores()).length + 1}`,
+        model: model(),
+        effort: effort(),
+      });
       await attachStore(s);
       setActiveId(s.id);
       setRefreshKey((k) => k + 1);
@@ -103,6 +125,41 @@ export const App: Component = () => {
     }
   };
 
+  const deleteSession = async (s: SessionSummary) => {
+    try {
+      await ipc.closeSession(s.id);
+      setStores((cur) => {
+        const next = { ...cur };
+        delete next[s.id];
+        return next;
+      });
+      if (activeId() === s.id) setActiveId(null);
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      const msg = typeof err === "string" ? err : err instanceof Error ? err.message : JSON.stringify(err);
+      console.error("close_session failed:", err);
+      pushToast("error", "delete failed", msg);
+    }
+  };
+
+  const clearAllSessions = async (sessions: SessionSummary[]) => {
+    const results = await Promise.allSettled(sessions.map((s) => ipc.closeSession(s.id)));
+    const failures = results.filter((r) => r.status === "rejected").length;
+    const removedIds = new Set(
+      sessions.filter((_, i) => results[i].status === "fulfilled").map((s) => s.id),
+    );
+    setStores((cur) => {
+      const next = { ...cur };
+      for (const id of removedIds) delete next[id];
+      return next;
+    });
+    if (activeId() && removedIds.has(activeId()!)) setActiveId(null);
+    setRefreshKey((k) => k + 1);
+    if (failures > 0) {
+      pushToast("error", "clear all partially failed", `${failures} of ${sessions.length} session(s) could not be closed.`);
+    }
+  };
+
   const pickCwd = async () => {
     try {
       const picked = await ipc.pickDirectory();
@@ -123,9 +180,19 @@ export const App: Component = () => {
     const store = stores()[id];
     if (!store) return;
 
-    if (text.trim() === "/clear") {
-      store.reset();
-      return;
+    store.pushHistory(text);
+
+    if (text.trim().startsWith("/")) {
+      const handled = await dispatchSlash(text, {
+        store,
+        model: model(),
+        effort: effort(),
+        setModel,
+        setEffort,
+      });
+      if (handled) return;
+      // Unhandled slash commands fall through — claude CLI processes them itself
+      // and emits a synthetic assistant message with the real output.
     }
 
     const s = store.status();
@@ -185,14 +252,22 @@ export const App: Component = () => {
           activeIds: activeIdSet(),
           cwd: currentCwd(),
           refreshKey: refreshKey(),
+          model: model(),
+          effort: effort(),
           onSetCwd: setCurrentCwd,
+          onSetModel: setModel,
+          onSetEffort: setEffort,
           onActivateSession: (s) => void activateSession(s),
+          onDeleteSession: (s) => void deleteSession(s),
+          onClearAllSessions: (list) => void clearAllSessions(list),
           onNewSession: () => void newSession(),
           onPickCwd: () => void pickCwd(),
           onShowToast: pushToast,
         }}
         center={{
           session: activeId() ? stores()[activeId()!] ?? null : null,
+          model: model(),
+          effort: effort(),
           onSend: (t) => void send(t),
           onCycleMode: () => void cycle(),
         }}

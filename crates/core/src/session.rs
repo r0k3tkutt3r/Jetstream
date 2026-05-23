@@ -1,9 +1,11 @@
+use crate::caffeinate::CaffeinateCtl;
 use crate::error::SessionError;
 use crate::protocol::{parse_line, ContentBlock, StreamDelta, StreamJsonEvent, TextDelta, Usage};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
@@ -49,6 +51,8 @@ pub struct SessionConfig {
     pub name: String,
     pub agent: Option<String>,
     pub resume_id: Option<Uuid>,
+    pub model: Option<String>,
+    pub effort: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -87,6 +91,16 @@ pub enum SessionEvent {
         usage: Usage,
         cost_usd: f64,
     },
+    /// Mid-turn usage update extracted from streaming MessageStart/MessageDelta
+    /// events. Used for the live token counter in the activity indicator —
+    /// `input_tokens` is shown with ↓ during the "loading" phase; once output
+    /// streams arrive, `output_tokens` is shown with ↑.
+    TurnUpdate {
+        #[serde(default)]
+        input_tokens: u64,
+        #[serde(default)]
+        output_tokens: u64,
+    },
     Resync,
     Error {
         message: String,
@@ -105,10 +119,18 @@ pub struct Session {
     pub state: Arc<RwLock<SessionState>>,
     events_tx: broadcast::Sender<SessionEvent>,
     stdin_tx: mpsc::Sender<String>,
+    is_busy: Arc<AtomicBool>,
 }
 
 impl Session {
     pub async fn spawn(cfg: SessionConfig) -> Result<Arc<Self>, SessionError> {
+        Self::spawn_with(cfg, None).await
+    }
+
+    pub async fn spawn_with(
+        cfg: SessionConfig,
+        caffeinate: Option<Arc<CaffeinateCtl>>,
+    ) -> Result<Arc<Self>, SessionError> {
         let id = cfg.resume_id.unwrap_or_else(Uuid::new_v4);
         let mut cmd = Command::new(&cfg.binary);
         cmd.arg("-p")
@@ -120,14 +142,20 @@ impl Session {
             .arg("--include-hook-events")
             .arg("--verbose")
             .arg("--dangerously-skip-permissions")
-            .arg("--session-id")
-            .arg(id.to_string())
             .arg("--permission-mode")
             .arg(PermissionMode::BypassPermissions.as_cli())
             .current_dir(&cfg.cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+
+        // `--session-id` and `--resume` are mutually exclusive in the claude
+        // CLI (unless `--fork-session` is also passed, which would change the
+        // id and break the frontend's event channel). Pass `--session-id` only
+        // when starting fresh; let `--resume` adopt the existing id.
+        if cfg.resume_id.is_none() {
+            cmd.arg("--session-id").arg(id.to_string());
+        }
 
         if let Some(agent) = &cfg.agent {
             cmd.arg("--agent").arg(agent);
@@ -137,6 +165,16 @@ impl Session {
         }
         if let Some(rid) = cfg.resume_id {
             cmd.arg("--resume").arg(rid.to_string());
+        }
+        if let Some(model) = &cfg.model {
+            if !model.is_empty() {
+                cmd.arg("--model").arg(model);
+            }
+        }
+        if let Some(effort) = &cfg.effort {
+            if !effort.is_empty() {
+                cmd.arg("--effort").arg(effort);
+            }
         }
 
         // Allow the test fake (a shell script) to run by stripping the flags it doesn't understand:
@@ -156,6 +194,22 @@ impl Session {
 
         let stdout = child.stdout.take().expect("stdout piped");
         let stdin = child.stdin.take().expect("stdin piped");
+        let stderr = child.stderr.take().expect("stderr piped");
+
+        // Drain stderr so the child never blocks on a full pipe buffer.
+        // Without this, --verbose / hook chatter can wedge the entire session
+        // once the kernel pipe (~64 KB on macOS) fills.
+        tokio::spawn({
+            let stderr_span = info_span!("session.stderr", session_id = %id);
+            async move {
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    tracing::debug!(target: "ccshell::claude_stderr", "{line}");
+                }
+            }
+            .instrument(stderr_span)
+        });
 
         let (events_tx, _) = broadcast::channel(EVENT_CHANNEL_CAP);
         let (stdin_tx, mut stdin_rx) = mpsc::channel::<String>(256);
@@ -163,6 +217,44 @@ impl Session {
         // Raw mpsc channel — reader → coalescer
         let (raw_tx, raw_rx) = mpsc::channel::<SessionEvent>(256);
         let (coalesced_tx, mut coalesced_rx) = mpsc::channel::<SessionEvent>(256);
+
+        // Busy tracker: subscribe BEFORE the bridge starts forwarding, so we
+        // never miss an event. Acquires caffeinate on the first activity
+        // event of a turn and releases on Result/Error/Closed.
+        let is_busy = Arc::new(AtomicBool::new(false));
+        if let Some(caf) = caffeinate {
+            let busy = is_busy.clone();
+            let mut tracker_rx = events_tx.subscribe();
+            tokio::spawn(async move {
+                loop {
+                    let ev = match tracker_rx.recv().await {
+                        Ok(ev) => ev,
+                        Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(broadcast::error::RecvError::Closed) => break,
+                    };
+                    let activity = matches!(
+                        ev,
+                        SessionEvent::Assistant { .. }
+                            | SessionEvent::Tool { .. }
+                            | SessionEvent::ToolResult { .. }
+                    );
+                    let terminal = matches!(
+                        ev,
+                        SessionEvent::Result { .. }
+                            | SessionEvent::Error { .. }
+                            | SessionEvent::Closed { .. }
+                    );
+                    if activity && !busy.swap(true, Ordering::SeqCst) {
+                        caf.acquire();
+                    } else if terminal && busy.swap(false, Ordering::SeqCst) {
+                        caf.release();
+                    }
+                }
+                if busy.swap(false, Ordering::SeqCst) {
+                    caf.release();
+                }
+            });
+        }
 
         // Coalescer: merges Assistant deltas at 16 ms ticks, passes through everything else
         tokio::spawn(coalesce_deltas(
@@ -241,7 +333,13 @@ impl Session {
             state: Arc::new(RwLock::new(SessionState::Idle)),
             events_tx,
             stdin_tx,
+            is_busy,
         }))
+    }
+
+    /// Test-visible accessor for the current busy state.
+    pub fn is_busy(&self) -> bool {
+        self.is_busy.load(Ordering::SeqCst)
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<SessionEvent> {
@@ -456,22 +554,41 @@ fn map_event(evt: StreamJsonEvent) -> Vec<SessionEvent> {
             event,
             parent_message_id,
             ..
-        } => {
-            if let StreamDelta::ContentBlockDelta {
+        } => match event {
+            StreamDelta::ContentBlockDelta {
                 delta: TextDelta::TextDelta { text },
                 ..
-            } = event
-            {
+            } => {
                 if let Some(msg_id) = parent_message_id {
-                    return vec![SessionEvent::Assistant {
+                    vec![SessionEvent::Assistant {
                         msg_id,
                         delta: text,
                         is_final: false,
-                    }];
+                    }]
+                } else {
+                    vec![]
                 }
             }
-            vec![]
-        }
+            StreamDelta::MessageStart { message } => {
+                if let Some(u) = message.usage {
+                    vec![SessionEvent::TurnUpdate {
+                        input_tokens: u.input_tokens
+                            + u.cache_read_input_tokens
+                            + u.cache_creation_input_tokens,
+                        output_tokens: 0,
+                    }]
+                } else {
+                    vec![]
+                }
+            }
+            StreamDelta::MessageDelta {
+                usage: Some(u), ..
+            } => vec![SessionEvent::TurnUpdate {
+                input_tokens: 0,
+                output_tokens: u.output_tokens,
+            }],
+            _ => vec![],
+        },
         StreamJsonEvent::Hook {
             hook_event_name,
             payload,

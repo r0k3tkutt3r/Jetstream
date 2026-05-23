@@ -1,5 +1,6 @@
 import { Component, For, Show, createResource, createSignal, onCleanup } from "solid-js";
 import { ipc } from "../ipc/bridge";
+import { ConfirmDialog } from "../render/ConfirmDialog";
 import type { CommandKind, CommandOutput, DirectoryConfig, SessionSummary } from "../ipc/types";
 
 export interface LeftPaneProps {
@@ -7,12 +8,21 @@ export interface LeftPaneProps {
   cwd: string;
   activeIds: Set<string>;
   refreshKey: number;
+  model: string;
+  effort: string;
   onSetCwd: (cwd: string) => void;
+  onSetModel: (m: string) => void;
+  onSetEffort: (e: string) => void;
   onActivateSession: (s: SessionSummary) => void;
+  onDeleteSession: (s: SessionSummary) => void;
+  onClearAllSessions: (sessions: SessionSummary[]) => void;
   onNewSession: () => void;
   onPickCwd: () => void;
   onShowToast: (kind: "success" | "error", title: string, body: string) => void;
 }
+
+const MODELS = ["sonnet", "opus", "haiku"];
+const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
 const KINDS: CommandKind[] = ["run", "test", "build"];
 const KIND_ICON: Record<CommandKind, string> = { run: "▶", test: "✓", build: "⚙" };
@@ -32,6 +42,8 @@ export const LeftPane: Component<LeftPaneProps> = (props) => {
   );
 
   const [running, setRunning] = createSignal<CommandKind | null>(null);
+  const [pendingDelete, setPendingDelete] = createSignal<SessionSummary | null>(null);
+  const [confirmClearAll, setConfirmClearAll] = createSignal(false);
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   const scheduleSave = (next: DirectoryConfig) => {
@@ -111,14 +123,75 @@ export const LeftPane: Component<LeftPaneProps> = (props) => {
           />
         </div>
 
+        <div style={{ display: "grid", "grid-template-columns": "1fr 1fr", gap: "8px" }}>
+          <div>
+            <div class="section-label">Model</div>
+            <select
+              value={props.model}
+              onChange={(e) => props.onSetModel(e.currentTarget.value)}
+              style={{
+                width: "100%",
+                "box-sizing": "border-box",
+                "font-size": "11px",
+                padding: "3px 4px",
+                background: "var(--bg-2)",
+                color: "var(--text-1)",
+                border: "1px solid var(--border)",
+                "border-radius": "3px",
+              }}
+            >
+              <For each={MODELS}>{(m) => <option value={m}>{m}</option>}</For>
+            </select>
+          </div>
+          <div>
+            <div class="section-label">Effort</div>
+            <select
+              value={props.effort}
+              onChange={(e) => props.onSetEffort(e.currentTarget.value)}
+              style={{
+                width: "100%",
+                "box-sizing": "border-box",
+                "font-size": "11px",
+                padding: "3px 4px",
+                background: "var(--bg-2)",
+                color: "var(--text-1)",
+                border: "1px solid var(--border)",
+                "border-radius": "3px",
+              }}
+            >
+              <For each={EFFORTS}>{(e) => <option value={e}>{e}</option>}</For>
+            </select>
+          </div>
+        </div>
+
         <div>
-          <div class="section-label">Sessions</div>
+          <div class="section-label" style={{ display: "flex", "justify-content": "space-between", "align-items": "center" }}>
+            <span>Sessions</span>
+            <Show when={(sessions() ?? []).length > 0}>
+              <span
+                onClick={() => setConfirmClearAll(true)}
+                title="delete all sessions for this directory"
+                style={{ cursor: "pointer", color: "var(--text-2)", "font-size": "10px" }}
+              >clear all</span>
+            </Show>
+          </div>
           <For each={sessions() ?? []} fallback={<div style={{ color: "var(--text-3)", "font-size": "11px" }}>no sessions for this directory</div>}>
             {(s) => {
               const isLive = () => props.activeIds.has(s.id);
+              const [hovered, setHovered] = createSignal(false);
+              const handleDelete = (ev: MouseEvent) => {
+                ev.stopPropagation();
+                if (ev.shiftKey) {
+                  props.onDeleteSession(s);
+                  return;
+                }
+                setPendingDelete(s);
+              };
               return (
                 <div
                   onClick={() => props.onActivateSession(s)}
+                  onMouseEnter={() => setHovered(true)}
+                  onMouseLeave={() => setHovered(false)}
                   style={{
                     padding: "6px 8px",
                     "border-radius": "3px",
@@ -128,11 +201,26 @@ export const LeftPane: Component<LeftPaneProps> = (props) => {
                     "border-left": props.activeId === s.id ? "2px solid var(--accent)" : "2px solid transparent",
                   }}
                 >
-                  <div style={{ "font-size": "11px", display: "flex", "justify-content": "space-between", "align-items": "center" }}>
-                    <span>{s.name || "(unnamed)"}</span>
-                    <Show when={!isLive()}>
-                      <span style={{ "font-size": "8px", color: "var(--text-3)", opacity: 0.7 }}>saved</span>
-                    </Show>
+                  <div style={{ "font-size": "11px", display: "flex", "justify-content": "space-between", "align-items": "center", gap: "6px" }}>
+                    <span style={{ flex: 1, overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>{s.name || "(unnamed)"}</span>
+                    <div style={{ display: "flex", "align-items": "center", gap: "6px" }}>
+                      <Show when={!isLive()}>
+                        <span style={{ "font-size": "8px", color: "var(--text-3)", opacity: 0.7 }}>saved</span>
+                      </Show>
+                      <Show when={hovered()}>
+                        <span
+                          onClick={handleDelete}
+                          title="delete session (shift+click to skip prompt)"
+                          style={{
+                            "font-size": "12px",
+                            color: "var(--text-3)",
+                            cursor: "pointer",
+                            padding: "0 4px",
+                            "line-height": 1,
+                          }}
+                        >×</span>
+                      </Show>
+                    </div>
                   </div>
                   <div style={{ "font-size": "9px", color: "var(--text-3)" }}>{s.mode}</div>
                 </div>
@@ -194,6 +282,31 @@ export const LeftPane: Component<LeftPaneProps> = (props) => {
           </For>
         </div>
       </div>
+      <ConfirmDialog
+        open={pendingDelete() !== null}
+        title="Delete session?"
+        body={`Delete "${pendingDelete()?.name || pendingDelete()?.id.slice(0, 8) || ""}"? This removes it from the list and closes it if running.\n\nTip: hold shift while clicking × to skip this prompt.`}
+        confirmLabel="Delete"
+        danger
+        onConfirm={() => {
+          const s = pendingDelete();
+          if (s) props.onDeleteSession(s);
+          setPendingDelete(null);
+        }}
+        onCancel={() => setPendingDelete(null)}
+      />
+      <ConfirmDialog
+        open={confirmClearAll()}
+        title="Clear all sessions?"
+        body={`Delete all ${(sessions() ?? []).length} session(s) for this directory? Running sessions will be closed. This can't be undone.`}
+        confirmLabel="Clear all"
+        danger
+        onConfirm={() => {
+          props.onClearAllSessions(sessions() ?? []);
+          setConfirmClearAll(false);
+        }}
+        onCancel={() => setConfirmClearAll(false)}
+      />
     </div>
   );
 };

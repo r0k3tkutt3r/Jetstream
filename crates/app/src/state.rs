@@ -60,6 +60,10 @@ pub struct Manifest {
     pub last_cwd: Option<String>,
     #[serde(default)]
     pub directories: HashMap<String, DirectoryConfig>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub effort: Option<String>,
 }
 
 fn default_theme() -> String {
@@ -82,6 +86,8 @@ impl Default for Manifest {
             font_size: default_font_size(),
             last_cwd: None,
             directories: HashMap::new(),
+            model: None,
+            effort: None,
         }
     }
 }

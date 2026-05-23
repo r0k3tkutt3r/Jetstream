@@ -15,6 +15,10 @@ pub struct SpawnArgs {
     pub name: String,
     pub agent: Option<String>,
     pub resume_id: Option<Uuid>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub effort: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -41,12 +45,18 @@ pub async fn spawn_session(
         ));
     }
     let cwd = resolve_cwd(args.cwd)?;
+    let (pref_model, pref_effort) = {
+        let m = manifest.lock().unwrap();
+        (m.model.clone(), m.effort.clone())
+    };
     let cfg = SessionConfig {
         binary,
         cwd,
         name: args.name,
         agent: args.agent,
         resume_id: args.resume_id,
+        model: args.model.or(pref_model),
+        effort: args.effort.or(pref_effort),
     };
     let session = manager.spawn(cfg).await.map_err(|e| e.to_string())?;
 
@@ -133,6 +143,63 @@ pub fn list_sessions(manager: State<'_, Arc<SessionManager>>) -> Vec<SessionSumm
             mode: s.mode.read().as_cli().to_string(),
         })
         .collect()
+}
+
+#[tauri::command]
+pub async fn switch_model(
+    app: AppHandle,
+    manager: State<'_, Arc<SessionManager>>,
+    manifest: State<'_, Mutex<Manifest>>,
+    manifest_path: State<'_, PathBuf>,
+    id: Uuid,
+    model: String,
+) -> Result<SessionSummary, String> {
+    let binary = which_claude();
+    if !binary.exists() {
+        return Err(format!("claude binary not found at {}", binary.display()));
+    }
+    let (name, cwd) = {
+        let session = manager.get(id).ok_or("no such session")?;
+        (session.name.clone(), session.cwd.clone())
+    };
+    let effort = {
+        let m = manifest.lock().unwrap();
+        m.effort.clone()
+    };
+    manager.close(id).await.map_err(|e| e.to_string())?;
+    let cfg = SessionConfig {
+        binary,
+        cwd: cwd.clone(),
+        name: name.clone(),
+        agent: None,
+        resume_id: Some(id),
+        model: Some(model.clone()),
+        effort,
+    };
+    let session = manager.spawn(cfg).await.map_err(|e| e.to_string())?;
+    {
+        let mut m = manifest.lock().unwrap();
+        m.model = Some(model);
+        let _ = save_to(&manifest_path, &m);
+    }
+    let new_id = session.id;
+    let _ = app.emit(
+        &format!("session://{new_id}"),
+        &serde_json::json!({"type":"Resync"}),
+    );
+    let mut rx = session.subscribe();
+    let app_clone = app.clone();
+    tokio::spawn(async move {
+        while let Ok(ev) = rx.recv().await {
+            let _ = app_clone.emit(&format!("session://{new_id}"), &ev);
+        }
+    });
+    Ok(SessionSummary {
+        id: session.id.to_string(),
+        name: session.name.clone(),
+        cwd: session.cwd.display().to_string(),
+        mode: "bypassPermissions".into(),
+    })
 }
 
 #[tauri::command]
@@ -230,6 +297,35 @@ pub fn set_directory_config(
 ) -> Result<(), String> {
     let mut m = manifest.lock().unwrap();
     m.directories.insert(cwd, config);
+    save_to(&manifest_path, &m).map_err(|e| e.to_string())
+}
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct Preferences {
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub effort: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_preferences(manifest: State<'_, Mutex<Manifest>>) -> Preferences {
+    let m = manifest.lock().unwrap();
+    Preferences {
+        model: m.model.clone(),
+        effort: m.effort.clone(),
+    }
+}
+
+#[tauri::command]
+pub fn set_preferences(
+    manifest: State<'_, Mutex<Manifest>>,
+    manifest_path: State<'_, PathBuf>,
+    prefs: Preferences,
+) -> Result<(), String> {
+    let mut m = manifest.lock().unwrap();
+    m.model = prefs.model;
+    m.effort = prefs.effort;
     save_to(&manifest_path, &m).map_err(|e| e.to_string())
 }
 
@@ -354,17 +450,25 @@ pub struct SlashCommand {
 
 #[tauri::command]
 pub fn list_slash_commands() -> Vec<SlashCommand> {
+    // The palette is a typing aid. Most commands are processed by the claude
+    // CLI itself when sent as a stream-json user message — the CLI emits a
+    // synthetic assistant reply with the real output. Only `/clear` and
+    // `/model <name>` have client-side semantics (see slash-handlers.ts).
     vec![
+        sc("clear", "Clear conversation (UI + claude context)", None),
+        sc("context", "Show token usage breakdown", None),
+        sc("cost", "Show session cost so far", None),
+        sc("help", "Show claude CLI help", None),
+        sc("status", "Show session status", None),
+        sc("model", "Switch model for this session", Some("<name>")),
         sc("agents", "Manage subagents", None),
-        sc("clear", "Clear conversation history", None),
         sc("compact", "Summarize history to free context", None),
-        sc("model", "Switch model for this session", Some("<model>")),
+        sc("init", "Initialize CLAUDE.md", None),
         sc("mcp", "Manage MCP servers", None),
         sc("plugin", "Manage Claude Code plugins", None),
         sc("resume", "Resume a previous session", Some("[query]")),
-        sc("help", "Show help", None),
-        sc("init", "Initialize CLAUDE.md", None),
         sc("review", "Review a pull request", Some("[pr]")),
+        sc("memory", "Show or edit memory files", None),
     ]
 }
 
@@ -426,14 +530,21 @@ pub struct ResumeArgs {
 pub async fn resume_session(
     app: AppHandle,
     manager: State<'_, Arc<SessionManager>>,
+    manifest: State<'_, Mutex<Manifest>>,
     args: ResumeArgs,
 ) -> Result<SessionSummary, String> {
+    let (pref_model, pref_effort) = {
+        let m = manifest.lock().unwrap();
+        (m.model.clone(), m.effort.clone())
+    };
     let cfg = SessionConfig {
         binary: which_claude(),
         cwd: PathBuf::from(args.cwd),
         name: args.name,
         agent: None,
         resume_id: Some(args.id),
+        model: pref_model,
+        effort: pref_effort,
     };
     let session = manager.spawn(cfg).await.map_err(|e| e.to_string())?;
     let id = session.id;

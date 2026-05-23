@@ -7,13 +7,14 @@ import type {
   CommandOutput,
   DirectoryConfig,
   PermissionMode,
+  Preferences,
   SessionEvent,
   SessionSummary,
   SlashCommand,
 } from "./types";
 
 export const ipc = {
-  spawnSession: (args: { cwd: string; name: string; agent?: string; resume_id?: string }) =>
+  spawnSession: (args: { cwd: string; name: string; agent?: string; resume_id?: string; model?: string; effort?: string }) =>
     invoke<SessionSummary>("spawn_session", { args }),
 
   sendUserMessage: (id: string, text: string) =>
@@ -30,6 +31,9 @@ export const ipc = {
 
   closeSession: (id: string) =>
     invoke<void>("close_session", { id }),
+
+  switchModel: (id: string, model: string) =>
+    invoke<SessionSummary>("switch_model", { id, model }),
 
   listAgents: () =>
     invoke<Agent[]>("list_agents"),
@@ -65,6 +69,11 @@ export const ipc = {
 
   runDirectoryCommand: (cwd: string, kind: CommandKind) =>
     invoke<CommandOutput>("run_directory_command", { cwd, kind }),
+
+  getPreferences: () => invoke<Preferences>("get_preferences"),
+
+  setPreferences: (prefs: Preferences) =>
+    invoke<void>("set_preferences", { prefs }),
 };
 
 export async function subscribeSession(

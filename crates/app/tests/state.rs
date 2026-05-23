@@ -20,6 +20,8 @@ fn roundtrip_preserves_sessions_and_window() {
         font_size: 13,
         last_cwd: None,
         directories: HashMap::new(),
+        model: None,
+        effort: None,
     };
 
     save_to(&path, &m).unwrap();
@@ -83,4 +85,21 @@ fn loads_legacy_manifest_without_new_fields() {
     assert_eq!(loaded.sessions.len(), 1);
     assert!(loaded.last_cwd.is_none());
     assert!(loaded.directories.is_empty());
+    assert!(loaded.model.is_none());
+    assert!(loaded.effort.is_none());
+}
+
+#[test]
+fn roundtrip_preserves_preferences() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("state.json");
+    let m = Manifest {
+        model: Some("opus".into()),
+        effort: Some("high".into()),
+        ..Manifest::default()
+    };
+    save_to(&path, &m).unwrap();
+    let loaded = load_from(&path).unwrap();
+    assert_eq!(loaded.model.as_deref(), Some("opus"));
+    assert_eq!(loaded.effort.as_deref(), Some("high"));
 }

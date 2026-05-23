@@ -15,6 +15,8 @@ async fn spawns_and_emits_events_until_result() {
         name: "test".into(),
         agent: None,
         resume_id: None,
+        model: None,
+        effort: None,
     };
     let session = Session::spawn(cfg).await.expect("spawn");
     let mut rx = session.subscribe();

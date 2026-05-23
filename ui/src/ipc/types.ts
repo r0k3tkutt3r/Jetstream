@@ -22,6 +22,7 @@ export type SessionEvent =
   | { type: "SubagentStop"; id: string; result: unknown }
   | { type: "Hook"; event: string; payload: unknown }
   | { type: "Result"; usage: Usage; cost_usd: number }
+  | { type: "TurnUpdate"; input_tokens: number; output_tokens: number }
   | { type: "Resync" }
   | { type: "Error"; message: string; recoverable: boolean }
   | { type: "Closed"; code: number };
@@ -57,3 +58,8 @@ export interface CommandOutput {
 }
 
 export type CommandKind = "run" | "test" | "build";
+
+export interface Preferences {
+  model: string | null;
+  effort: string | null;
+}

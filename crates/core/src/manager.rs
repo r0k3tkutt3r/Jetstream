@@ -27,17 +27,13 @@ impl SessionManager {
     }
 
     pub async fn spawn(&self, cfg: SessionConfig) -> Result<Arc<Session>, SessionError> {
-        let session = Session::spawn(cfg).await?;
-        self.caffeinate.acquire();
+        let session = Session::spawn_with(cfg, Some(self.caffeinate.clone())).await?;
         self.sessions.write().insert(session.id, session.clone());
         Ok(session)
     }
 
     pub async fn close(&self, id: Uuid) -> Result<(), SessionError> {
-        let removed = self.sessions.write().remove(&id);
-        if removed.is_some() {
-            self.caffeinate.release();
-        }
+        self.sessions.write().remove(&id);
         Ok(())
     }
 
