@@ -1,9 +1,11 @@
-import { Component, For, createEffect, createSignal, onCleanup } from "solid-js";
+import { Component, For, Show, createEffect, createSignal, onCleanup } from "solid-js";
 import { Layout } from "./panes/Layout";
 import { Settings } from "./settings/Settings";
-import { ipc, subscribeSession } from "./ipc/bridge";
+import { LiveToast } from "./render/LiveToast";
+import { CommandTerminal } from "./render/CommandTerminal";
+import { ipc, subscribeSession, subscribeCommandOutput, subscribeCommandExit } from "./ipc/bridge";
 import { createSessionStore, type SessionStore } from "./state/session-store";
-import type { SessionSummary } from "./ipc/types";
+import type { CommandKind, SessionSummary } from "./ipc/types";
 
 interface Toast {
   id: number;
@@ -24,6 +26,13 @@ export const App: Component = () => {
   const [currentCwd, setCurrentCwd] = createSignal<string>("");
   const [refreshKey, setRefreshKey] = createSignal(0);
   const [toasts, setToasts] = createSignal<Toast[]>([]);
+  const [cmdKind, setCmdKind] = createSignal<CommandKind | null>(null);
+  const [cmdCommand, setCmdCommand] = createSignal("");
+  const [cmdLines, setCmdLines] = createSignal<string[]>([]);
+  const [cmdExitCode, setCmdExitCode] = createSignal<number | undefined>(undefined);
+  const [cmdExpanded, setCmdExpanded] = createSignal(false);
+  const [cmdRunning, setCmdRunning] = createSignal(false);
+  let cmdOutputListeners: Array<(data: number[]) => void> = [];
   let toastCounter = 0;
 
   const pushToast = (kind: "success" | "error", title: string, body: string) => {
@@ -33,6 +42,63 @@ export const App: Component = () => {
   };
   const dismissToast = (id: number) =>
     setToasts((cur) => cur.filter((t) => t.id !== id));
+
+  // Subscribe to command events
+  void (async () => {
+    const unOutput = await subscribeCommandOutput((data) => {
+      const text = new TextDecoder().decode(new Uint8Array(data));
+      const newLines = text.split("\n");
+      setCmdLines((prev) => {
+        const combined = [...prev];
+        if (combined.length > 0 && newLines.length > 0) {
+          combined[combined.length - 1] += newLines[0];
+          combined.push(...newLines.slice(1));
+        } else {
+          combined.push(...newLines);
+        }
+        return combined.slice(-200);
+      });
+      for (const listener of cmdOutputListeners) {
+        listener(data);
+      }
+    });
+    const unExit = await subscribeCommandExit((exitCode, _command) => {
+      setCmdRunning(false);
+      setCmdExitCode(exitCode);
+      if (!cmdExpanded()) {
+        setTimeout(() => {
+          setCmdKind(null);
+          setCmdLines([]);
+          setCmdExitCode(undefined);
+        }, 8000);
+      }
+    });
+    onCleanup(() => { unOutput(); unExit(); });
+  })();
+
+  const handleRunCommand = async (kind: CommandKind) => {
+    const cwd = currentCwd();
+    if (!cwd) return;
+    setCmdKind(kind);
+    setCmdCommand("");
+    setCmdLines([]);
+    setCmdExitCode(undefined);
+    setCmdExpanded(false);
+    setCmdRunning(true);
+    try {
+      const command = await ipc.startCommand(cwd, kind);
+      setCmdCommand(command);
+    } catch (err) {
+      const msg = typeof err === "string" ? err : err instanceof Error ? err.message : String(err);
+      pushToast("error", `${kind} failed`, msg);
+      setCmdKind(null);
+      setCmdRunning(false);
+    }
+  };
+
+  const handleKillCommand = () => {
+    ipc.killCommand().catch(() => {});
+  };
 
   // Restore last cwd, falling back to home dir.
   void (async () => {
@@ -185,8 +251,10 @@ export const App: Component = () => {
           activeIds: activeIdSet(),
           cwd: currentCwd(),
           refreshKey: refreshKey(),
+          commandRunning: cmdKind(),
           onSetCwd: setCurrentCwd,
           onActivateSession: (s) => void activateSession(s),
+          onRunCommand: (kind) => void handleRunCommand(kind),
           onNewSession: () => void newSession(),
           onPickCwd: () => void pickCwd(),
           onShowToast: pushToast,
@@ -208,6 +276,22 @@ export const App: Component = () => {
         fontSize={fontSize()}     onSetFontSize={setFontSize}
       />
       <div style={{ position: "fixed", top: "16px", right: "16px", display: "flex", "flex-direction": "column", gap: "8px", "z-index": 9999, "max-width": "440px" }}>
+        <Show when={cmdKind() && !cmdExpanded()}>
+          <LiveToast
+            kind={cmdKind()!}
+            command={cmdCommand()}
+            status={cmdRunning() ? "streaming" : "completed"}
+            lines={cmdLines()}
+            exitCode={cmdExitCode()}
+            onExpand={() => setCmdExpanded(true)}
+            onKill={handleKillCommand}
+            onDismiss={() => {
+              setCmdKind(null);
+              setCmdLines([]);
+              setCmdExitCode(undefined);
+            }}
+          />
+        </Show>
         <For each={toasts()}>
           {(t) => (
             <div
@@ -233,6 +317,24 @@ export const App: Component = () => {
           )}
         </For>
       </div>
+      <Show when={cmdExpanded() && cmdKind()}>
+        <CommandTerminal
+          kind={cmdKind()!}
+          command={cmdCommand()}
+          running={cmdRunning()}
+          exitCode={cmdExitCode()}
+          outputSubscribe={(cb) => { cmdOutputListeners.push(cb); }}
+          onClose={() => {
+            setCmdExpanded(false);
+            if (!cmdRunning()) {
+              setCmdKind(null);
+              setCmdLines([]);
+              setCmdExitCode(undefined);
+            }
+          }}
+          onKill={handleKillCommand}
+        />
+      </Show>
     </>
   );
 };

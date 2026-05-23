@@ -22,11 +22,14 @@ fn main() {
     let manifest_path = default_path();
     let manifest = load_from(&manifest_path).unwrap_or_default();
 
+    let cmd_runner: commands::CommandRunnerState = std::sync::Mutex::new(None);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(manager)
         .manage(std::sync::Mutex::new(manifest))
         .manage(manifest_path)
+        .manage(cmd_runner)
         .invoke_handler(tauri::generate_handler![
             commands::spawn_session,
             commands::send_user_message,
@@ -47,6 +50,11 @@ fn main() {
             commands::set_directory_config,
             commands::pick_directory,
             commands::run_directory_command,
+            commands::start_command,
+            commands::send_command_input,
+            commands::resize_command,
+            commands::kill_command,
+            commands::get_command_buffer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

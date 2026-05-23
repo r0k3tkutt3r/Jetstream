@@ -1,14 +1,16 @@
-import { Component, For, Show, createResource, createSignal, onCleanup } from "solid-js";
+import { Component, For, Show, createResource, onCleanup } from "solid-js";
 import { ipc } from "../ipc/bridge";
-import type { CommandKind, CommandOutput, DirectoryConfig, SessionSummary } from "../ipc/types";
+import type { CommandKind, DirectoryConfig, SessionSummary } from "../ipc/types";
 
 export interface LeftPaneProps {
   activeId: string | null;
   cwd: string;
   activeIds: Set<string>;
   refreshKey: number;
+  commandRunning: CommandKind | null;
   onSetCwd: (cwd: string) => void;
   onActivateSession: (s: SessionSummary) => void;
+  onRunCommand: (kind: CommandKind) => void;
   onNewSession: () => void;
   onPickCwd: () => void;
   onShowToast: (kind: "success" | "error", title: string, body: string) => void;
@@ -30,8 +32,6 @@ export const LeftPane: Component<LeftPaneProps> = (props) => {
       return await ipc.getDirectoryConfig(cwd);
     },
   );
-
-  const [running, setRunning] = createSignal<CommandKind | null>(null);
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   const scheduleSave = (next: DirectoryConfig) => {
@@ -57,23 +57,7 @@ export const LeftPane: Component<LeftPaneProps> = (props) => {
     return c[`${kind}_command` as keyof DirectoryConfig];
   };
 
-  const runCommand = async (kind: CommandKind) => {
-    const value = fieldValue(kind).trim();
-    if (!value || !props.cwd) return;
-    setRunning(kind);
-    try {
-      const out: CommandOutput = await ipc.runDirectoryCommand(props.cwd, kind);
-      const ok = out.exit_code === 0;
-      const tail = [out.stdout_tail, out.stderr_tail].filter(Boolean).join("\n").trim();
-      const body = `$ ${out.command}\nexit ${out.exit_code}${tail ? "\n\n" + tail : ""}`;
-      props.onShowToast(ok ? "success" : "error", `${kind} ${ok ? "ok" : "failed"}`, body);
-    } catch (err) {
-      const msg = typeof err === "string" ? err : err instanceof Error ? err.message : String(err);
-      props.onShowToast("error", `${kind} failed`, msg);
-    } finally {
-      setRunning(null);
-    }
-  };
+  const running = () => props.commandRunning;
 
   return (
     <div class="pane">
@@ -147,7 +131,7 @@ export const LeftPane: Component<LeftPaneProps> = (props) => {
             <For each={KINDS}>
               {(k) => (
                 <button
-                  onClick={() => void runCommand(k)}
+                  onClick={() => props.onRunCommand(k)}
                   disabled={!fieldValue(k).trim() || running() !== null || !props.cwd}
                   title={fieldValue(k).trim() || `set ${k} command below`}
                   style={{

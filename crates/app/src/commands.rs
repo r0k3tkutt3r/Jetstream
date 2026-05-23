@@ -1,5 +1,6 @@
 use ccshell_app::state::{save_to, DirectoryConfig, Manifest, ManifestSession};
 use ccshell_core::agents::AgentRegistry;
+use ccshell_core::command_runner::{CommandEvent, CommandRunner};
 use ccshell_core::manager::SessionManager;
 use ccshell_core::session::{cycle_mode as core_cycle_mode, SessionConfig};
 use serde::{Deserialize, Serialize};
@@ -8,6 +9,8 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
+
+pub type CommandRunnerState = Mutex<Option<CommandRunner>>;
 
 #[derive(Deserialize)]
 pub struct SpawnArgs {
@@ -299,6 +302,111 @@ pub async fn run_directory_command(
         stderr_tail: tail_lines(&stderr, 15),
         command: cmd_for_output,
     })
+}
+
+#[tauri::command]
+pub async fn start_command(
+    app: AppHandle,
+    runner_state: State<'_, CommandRunnerState>,
+    manifest: State<'_, Mutex<Manifest>>,
+    cwd: String,
+    kind: String,
+) -> Result<String, String> {
+    let command = {
+        let m = manifest.lock().unwrap();
+        let cfg = m.directories.get(&cwd).cloned().unwrap_or_default();
+        match kind.as_str() {
+            "run" => cfg.run_command,
+            "test" => cfg.test_command,
+            "build" => cfg.build_command,
+            _ => return Err(format!("unknown command kind: {kind}")),
+        }
+    };
+    let trimmed = command.trim().to_string();
+    if trimmed.is_empty() {
+        return Err(format!("no {kind} command configured for this directory"));
+    }
+    let cwd_path = PathBuf::from(&cwd);
+    if !cwd_path.exists() {
+        return Err(format!("cwd does not exist: {cwd}"));
+    }
+
+    // Kill any existing runner
+    {
+        let mut guard = runner_state.lock().unwrap();
+        if let Some(mut prev) = guard.take() {
+            let _ = prev.kill();
+        }
+    }
+
+    let runner =
+        CommandRunner::spawn(&trimmed, &cwd_path, 80, 24).map_err(|e| e.to_string())?;
+    let mut rx = runner.subscribe();
+
+    {
+        let mut guard = runner_state.lock().unwrap();
+        *guard = Some(runner);
+    }
+
+    let cmd_for_event = trimmed.clone();
+    tokio::spawn(async move {
+        while let Ok(ev) = rx.recv().await {
+            match ev {
+                CommandEvent::Output(data) => {
+                    let _ = app.emit("command://output", serde_json::json!({ "data": data }));
+                }
+                CommandEvent::Exit(code) => {
+                    let _ = app.emit(
+                        "command://exit",
+                        serde_json::json!({
+                            "exit_code": code,
+                            "command": cmd_for_event,
+                        }),
+                    );
+                    break;
+                }
+            }
+        }
+    });
+
+    Ok(trimmed)
+}
+
+#[tauri::command]
+pub fn send_command_input(
+    runner_state: State<'_, CommandRunnerState>,
+    data: String,
+) -> Result<(), String> {
+    let mut guard = runner_state.lock().unwrap();
+    let runner = guard.as_mut().ok_or("no command running")?;
+    runner
+        .write_input(data.as_bytes())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn resize_command(
+    runner_state: State<'_, CommandRunnerState>,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    let guard = runner_state.lock().unwrap();
+    let runner = guard.as_ref().ok_or("no command running")?;
+    runner.resize(cols, rows).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn kill_command(runner_state: State<'_, CommandRunnerState>) -> Result<(), String> {
+    let mut guard = runner_state.lock().unwrap();
+    let runner = guard.as_mut().ok_or("no command running")?;
+    runner.kill().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_command_buffer(runner_state: State<'_, CommandRunnerState>) -> Result<Vec<u8>, String> {
+    let guard = runner_state.lock().unwrap();
+    let runner = guard.as_ref().ok_or("no command running")?;
+    Ok(runner.buffer_snapshot())
 }
 
 #[tauri::command]

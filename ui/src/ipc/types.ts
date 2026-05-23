@@ -57,3 +57,12 @@ export interface CommandOutput {
 }
 
 export type CommandKind = "run" | "test" | "build";
+
+export type CommandStatus = "idle" | "streaming" | "expanded" | "completed";
+
+export interface CommandState {
+  kind: CommandKind;
+  command: string;
+  status: CommandStatus;
+  exitCode?: number;
+}
