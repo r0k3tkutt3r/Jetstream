@@ -12,6 +12,7 @@ thiserror    = { workspace = true }
 uuid         = { workspace = true }
 parking_lot  = { workspace = true }
 tracing      = { workspace = true }
+portable-pty = { workspace = true }
 
 [dev-dependencies]
 insta        = { version = "1", features = ["json"] }
