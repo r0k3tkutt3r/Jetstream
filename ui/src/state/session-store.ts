@@ -11,11 +11,11 @@ export interface ToolCall {
 }
 
 export interface Message {
-  id: string;          // msg_id from claude or "user-<n>"
+  id: string;
   role: "user" | "assistant";
   content: string;
   tools?: ToolCall[];
-  subagentRefs?: string[];   // ids of subagents dispatched in this message
+  subagentRefs?: string[];
 }
 
 export interface SubagentRecord {
@@ -27,20 +27,27 @@ export interface SubagentRecord {
   result?: unknown;
 }
 
+export type SessionStatus = "idle" | "thinking" | "tool" | "error" | "closed";
+
 export interface SessionStore {
   id: string;
   name: string;
   cwd: string;
   mode: Accessor<PermissionMode>;
   setMode: (m: PermissionMode) => void;
-  status: Accessor<"idle" | "thinking" | "tool" | "error" | "closed">;
+  status: Accessor<SessionStatus>;
   messages: Accessor<Message[]>;
   subagents: Accessor<Record<string, SubagentRecord>>;
   usage: Accessor<Usage | null>;
   cost: Accessor<number>;
+  cumulativeTokens: Accessor<number>;
+  queue: Accessor<string[]>;
+  lastActivity: Accessor<string | null>;
 
   handleEvent: (e: SessionEvent) => void;
   appendUserMessage: (text: string) => void;
+  enqueue: (text: string) => void;
+  drainQueue: () => string[];
   reset: () => void;
 }
 
@@ -53,11 +60,14 @@ interface InitArgs {
 
 export function createSessionStore(init: InitArgs): SessionStore {
   const [mode, setMode] = createSignal<PermissionMode>(init.mode);
-  const [status, setStatus] = createSignal<"idle" | "thinking" | "tool" | "error" | "closed">("idle");
+  const [status, setStatus] = createSignal<SessionStatus>("idle");
   const [messages, setMessages] = createStore<Message[]>([]);
   const [subagents, setSubagents] = createStore<Record<string, SubagentRecord>>({});
   const [usage, setUsage] = createSignal<Usage | null>(null);
   const [cost, setCost] = createSignal<number>(0);
+  const [cumulativeTokens, setCumulativeTokens] = createSignal<number>(0);
+  const [queue, setQueue] = createStore<string[]>([]);
+  const [lastActivity, setLastActivity] = createSignal<string | null>(null);
 
   let userCounter = 0;
 
@@ -65,14 +75,19 @@ export function createSessionStore(init: InitArgs): SessionStore {
     switch (e.type) {
       case "Assistant": {
         setMessages(produce((draft) => {
-          const last = draft[draft.length - 1];
-          if (last && last.role === "assistant" && last.id === e.msg_id) {
-            last.content += e.delta;
+          const existingIdx = draft.findIndex((m) => m.role === "assistant" && m.id === e.msg_id);
+          if (existingIdx >= 0) {
+            if (e.is_final) {
+              draft[existingIdx].content = e.delta;
+            } else {
+              draft[existingIdx].content += e.delta;
+            }
           } else {
             draft.push({ id: e.msg_id, role: "assistant", content: e.delta, tools: [] });
           }
         }));
         setStatus("thinking");
+        setLastActivity("responding");
         break;
       }
       case "Tool": {
@@ -84,6 +99,7 @@ export function createSessionStore(init: InitArgs): SessionStore {
           }
         }));
         setStatus("tool");
+        setLastActivity(`${e.name}…`);
         break;
       }
       case "ToolResult": {
@@ -108,6 +124,7 @@ export function createSessionStore(init: InitArgs): SessionStore {
             last.subagentRefs.push(e.id);
           }
         }));
+        setLastActivity(`agent: ${e.agent}`);
         break;
       }
       case "SubagentStop": {
@@ -122,11 +139,18 @@ export function createSessionStore(init: InitArgs): SessionStore {
       case "Result": {
         setUsage(e.usage);
         setCost((c) => c + e.cost_usd);
+        const turnTokens =
+          (e.usage?.input_tokens ?? 0) +
+          (e.usage?.output_tokens ?? 0) +
+          (e.usage?.cache_read_input_tokens ?? 0) +
+          (e.usage?.cache_creation_input_tokens ?? 0);
+        setCumulativeTokens((n) => n + turnTokens);
         setStatus("idle");
+        setLastActivity(null);
         break;
       }
-      case "Error": setStatus("error"); break;
-      case "Closed": setStatus("closed"); break;
+      case "Error": setStatus("error"); setLastActivity("error"); break;
+      case "Closed": setStatus("closed"); setLastActivity("closed"); break;
       default: break;
     }
   }
@@ -138,12 +162,25 @@ export function createSessionStore(init: InitArgs): SessionStore {
     }));
   }
 
+  function enqueue(text: string) {
+    setQueue(produce((q) => { q.push(text); }));
+  }
+
+  function drainQueue(): string[] {
+    const items = [...queue];
+    setQueue([]);
+    return items;
+  }
+
   function reset() {
     setMessages([]);
     setSubagents({});
     setUsage(null);
     setCost(0);
+    setCumulativeTokens(0);
+    setQueue([]);
     setStatus("idle");
+    setLastActivity(null);
   }
 
   return {
@@ -157,8 +194,13 @@ export function createSessionStore(init: InitArgs): SessionStore {
     subagents: () => subagents,
     usage,
     cost,
+    cumulativeTokens,
+    queue: () => queue,
+    lastActivity,
     handleEvent,
     appendUserMessage,
+    enqueue,
+    drainQueue,
     reset,
   };
 }

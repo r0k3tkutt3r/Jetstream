@@ -57,6 +57,8 @@ pub enum SessionEvent {
     Assistant {
         msg_id: String,
         delta: String,
+        #[serde(default)]
+        is_final: bool,
     },
     Tool {
         id: String,
@@ -356,27 +358,27 @@ pub async fn coalesce_deltas(
         tokio::select! {
             biased;
             maybe = rx.recv() => match maybe {
-                Some(SessionEvent::Assistant { msg_id, delta }) => {
+                Some(SessionEvent::Assistant { msg_id, delta, is_final: false }) => {
                     pending.entry(msg_id).or_default().push_str(&delta);
                 }
                 Some(other) => {
                     // Flush any buffered deltas before forwarding non-Assistant events,
                     // so that ordering is preserved (Assistant before Result, etc.)
                     for (msg_id, delta) in pending.drain() {
-                        let _ = tx.send(SessionEvent::Assistant { msg_id, delta }).await;
+                        let _ = tx.send(SessionEvent::Assistant { msg_id, delta, is_final: false }).await;
                     }
                     let _ = tx.send(other).await;
                 }
                 None => {
                     for (msg_id, delta) in pending.drain() {
-                        let _ = tx.send(SessionEvent::Assistant { msg_id, delta }).await;
+                        let _ = tx.send(SessionEvent::Assistant { msg_id, delta, is_final: false }).await;
                     }
                     return;
                 }
             },
             _ = tick.tick() => {
                 for (msg_id, delta) in pending.drain() {
-                    let _ = tx.send(SessionEvent::Assistant { msg_id, delta }).await;
+                    let _ = tx.send(SessionEvent::Assistant { msg_id, delta, is_final: false }).await;
                 }
             }
         }
@@ -410,10 +412,25 @@ fn map_event(evt: StreamJsonEvent) -> Vec<SessionEvent> {
     match evt {
         StreamJsonEvent::Assistant { message } => {
             let mut out = vec![];
+            let mut text_buf = String::new();
             for block in message.content {
-                if let ContentBlock::ToolUse { id, name, input } = block {
-                    out.push(SessionEvent::Tool { id, name, input });
+                match block {
+                    ContentBlock::Text { text } => text_buf.push_str(&text),
+                    ContentBlock::ToolUse { id, name, input } => {
+                        out.push(SessionEvent::Tool { id, name, input });
+                    }
+                    _ => {}
                 }
+            }
+            if !text_buf.is_empty() {
+                out.insert(
+                    0,
+                    SessionEvent::Assistant {
+                        msg_id: message.id,
+                        delta: text_buf,
+                        is_final: true,
+                    },
+                );
             }
             out
         }
@@ -449,6 +466,7 @@ fn map_event(evt: StreamJsonEvent) -> Vec<SessionEvent> {
                     return vec![SessionEvent::Assistant {
                         msg_id,
                         delta: text,
+                        is_final: false,
                     }];
                 }
             }

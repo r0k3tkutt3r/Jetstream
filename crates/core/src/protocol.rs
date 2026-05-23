@@ -45,6 +45,7 @@ pub enum StreamJsonEvent {
         num_turns: u32,
         #[serde(default)]
         total_cost_usd: f64,
+        #[serde(default)]
         usage: Usage,
     },
     ControlRequest {

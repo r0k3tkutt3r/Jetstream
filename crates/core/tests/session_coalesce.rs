@@ -13,6 +13,7 @@ async fn merges_rapid_deltas_into_one_per_tick() {
         tx.send(SessionEvent::Assistant {
             msg_id: "m1".into(),
             delta: ch.into(),
+            is_final: false,
         })
         .await
         .unwrap();

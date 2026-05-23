@@ -23,6 +23,7 @@ fn main() {
     let manifest = load_from(&manifest_path).unwrap_or_default();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(manager)
         .manage(std::sync::Mutex::new(manifest))
         .manage(manifest_path)
@@ -34,10 +35,18 @@ fn main() {
             commands::list_sessions,
             commands::close_session,
             commands::list_agents,
+            commands::get_default_cwd,
             commands::caffeinate_status,
             commands::list_slash_commands,
             commands::replay_session,
             commands::resume_session,
+            commands::list_sessions_for_cwd,
+            commands::get_last_cwd,
+            commands::set_last_cwd,
+            commands::get_directory_config,
+            commands::set_directory_config,
+            commands::pick_directory,
+            commands::run_directory_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

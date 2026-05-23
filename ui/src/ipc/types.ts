@@ -8,14 +8,14 @@ export interface SessionSummary {
 }
 
 export interface Usage {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadInputTokens: number;
-  cacheCreationInputTokens: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_input_tokens: number;
+  cache_creation_input_tokens: number;
 }
 
 export type SessionEvent =
-  | { type: "Assistant"; msg_id: string; delta: string }
+  | { type: "Assistant"; msg_id: string; delta: string; is_final?: boolean }
   | { type: "Tool"; id: string; name: string; input: unknown }
   | { type: "ToolResult"; id: string; output: unknown; is_error: boolean }
   | { type: "SubagentStart"; id: string; agent: string; prompt: string }
@@ -42,3 +42,18 @@ export interface SlashCommand {
   description: string;
   argument_hint: string | null;
 }
+
+export interface DirectoryConfig {
+  run_command: string;
+  test_command: string;
+  build_command: string;
+}
+
+export interface CommandOutput {
+  exit_code: number;
+  stdout_tail: string;
+  stderr_tail: string;
+  command: string;
+}
+
+export type CommandKind = "run" | "test" | "build";

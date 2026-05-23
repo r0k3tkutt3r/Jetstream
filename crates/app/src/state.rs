@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -32,6 +33,17 @@ pub struct ManifestSession {
     pub created: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct DirectoryConfig {
+    #[serde(default)]
+    pub run_command: String,
+    #[serde(default)]
+    pub test_command: String,
+    #[serde(default)]
+    pub build_command: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
     #[serde(default)]
@@ -44,6 +56,10 @@ pub struct Manifest {
     pub font_family: String,
     #[serde(default = "default_font_size")]
     pub font_size: u32,
+    #[serde(default)]
+    pub last_cwd: Option<String>,
+    #[serde(default)]
+    pub directories: HashMap<String, DirectoryConfig>,
 }
 
 fn default_theme() -> String {
@@ -64,6 +80,8 @@ impl Default for Manifest {
             theme: default_theme(),
             font_family: default_font_family(),
             font_size: default_font_size(),
+            last_cwd: None,
+            directories: HashMap::new(),
         }
     }
 }

@@ -1,8 +1,22 @@
+.titlebar {
+  height: 28px;
+  -webkit-app-region: drag;
+  app-region: drag;
+  background: var(--bg-0);
+  flex-shrink: 0;
+}
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg-0);
+}
 .layout {
   display: grid;
   grid-template-columns: 220px 1fr 260px;
   gap: 8px;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   padding: 8px;
   background: var(--bg-0);
 }
@@ -39,4 +53,18 @@
   letter-spacing: 0.06em;
   color: var(--text-3);
   margin-bottom: 6px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }

@@ -1,4 +1,4 @@
-import { Component, Show, createResource, createSignal } from "solid-js";
+import { Component, For, Show, createResource, createSignal } from "solid-js";
 import type { SessionStore } from "../state/session-store";
 import { MessageList } from "../render/MessageList";
 import { SlashPalette, matchSlash } from "../composer/SlashPalette";
@@ -29,6 +29,12 @@ export const CenterPane: Component<CenterPaneProps> = (props) => {
     if (!t) return;
     props.onSend(t);
     setInput("");
+    setHighlight(0);
+  };
+
+  const busy = () => {
+    const s = props.session?.status();
+    return s === "thinking" || s === "tool";
   };
 
   return (
@@ -46,6 +52,18 @@ export const CenterPane: Component<CenterPaneProps> = (props) => {
             </div>
           </div>
           <div style={{ display: "flex", gap: "6px", "align-items": "center" }}>
+            <Show when={busy()}>
+              <span style={{
+                "font-size": "10px",
+                color: "var(--accent)",
+                display: "inline-flex",
+                "align-items": "center",
+                gap: "4px",
+              }}>
+                <span class="spinner" />
+                {props.session!.lastActivity() ?? props.session!.status()}
+              </span>
+            </Show>
             <span
               onClick={props.onCycleMode}
               style={{
@@ -63,10 +81,33 @@ export const CenterPane: Component<CenterPaneProps> = (props) => {
 
         <MessageList
           messages={props.session!.messages()}
-          scrollRef={(el) => { /* parked for auto-scroll in Task 20 */ }}
+          scrollRef={() => {}}
         />
 
         <div style={{ "border-top": "1px solid var(--border)", padding: "8px 12px" }}>
+          <Show when={(props.session?.queue() ?? []).length > 0}>
+            <div style={{
+              "font-size": "10px",
+              color: "var(--text-3)",
+              "margin-bottom": "6px",
+              display: "flex",
+              "flex-direction": "column",
+              gap: "2px",
+            }}>
+              <For each={props.session!.queue()}>
+                {(q, i) => (
+                  <div style={{
+                    background: "var(--bg-2)",
+                    padding: "3px 8px",
+                    "border-radius": "3px",
+                    "border-left": "2px solid var(--text-3)",
+                  }}>
+                    queued #{i() + 1}: <span style={{ color: "var(--text-2)" }}>{q.length > 80 ? q.slice(0, 77) + "…" : q}</span>
+                  </div>
+                )}
+              </For>
+            </div>
+          </Show>
           <div style={{ position: "relative" }}>
             <Show when={isSlashOpen() && slashCommands()}>
               <SlashPalette
@@ -94,7 +135,8 @@ export const CenterPane: Component<CenterPaneProps> = (props) => {
                     setHighlight((h) => Math.max(h - 1, 0));
                     return;
                   }
-                  if ((e.key === "Tab" || e.key === "Enter") && matches.length > 0) {
+                  // Only Tab (without shift) and Enter accept — Shift+Tab falls through to global mode-cycle
+                  if (((e.key === "Tab" && !e.shiftKey) || e.key === "Enter") && matches.length > 0 && !e.shiftKey) {
                     e.preventDefault();
                     acceptSlash(matches[highlight()]);
                     return;
@@ -102,6 +144,7 @@ export const CenterPane: Component<CenterPaneProps> = (props) => {
                   if (e.key === "Escape") {
                     e.preventDefault();
                     setInput("");
+                    setHighlight(0);
                     return;
                   }
                 }
@@ -110,7 +153,7 @@ export const CenterPane: Component<CenterPaneProps> = (props) => {
                   submit();
                 }
               }}
-              placeholder="› message (Enter to send, Shift+Enter for newline)"
+              placeholder={busy() ? "› queue a message (sent when current turn ends)" : "› message (Enter to send, Shift+Enter for newline)"}
               rows={2}
               style={{
                 width: "100%",
