@@ -18,6 +18,7 @@ export interface LeftPaneProps {
   onDeleteSession: (s: SessionSummary) => void;
   onClearAllSessions: (sessions: SessionSummary[]) => void;
   onRunCommand: (kind: CommandKind) => void;
+  onKillCommand: () => void;
   onNewSession: () => void;
   onPickCwd: () => void;
   onShowToast: (kind: "success" | "error", title: string, body: string) => void;
@@ -218,27 +219,30 @@ export const LeftPane: Component<LeftPaneProps> = (props) => {
           <div class="section-label">Project</div>
           <div style={{ display: "flex", gap: "4px", "margin-bottom": "8px" }}>
             <For each={KINDS}>
-              {(k) => (
-                <button
-                  onClick={() => props.onRunCommand(k)}
-                  disabled={!fieldValue(k).trim() || running() !== null || !props.cwd}
-                  title={fieldValue(k).trim() || `set ${k} command below`}
-                  style={{
-                    flex: 1,
-                    "font-size": "10px",
-                    padding: "4px 6px",
-                    background: running() === k ? "var(--accent-bg)" : "var(--bg-2)",
-                    color: "var(--text-1)",
-                    border: "1px solid var(--border)",
-                    "border-radius": "3px",
-                    cursor: fieldValue(k).trim() && !running() ? "pointer" : "not-allowed",
-                    opacity: fieldValue(k).trim() && !running() ? 1 : 0.5,
-                    "text-transform": "capitalize",
-                  }}
-                >
-                  {KIND_ICON[k]} {k}
-                </button>
-              )}
+              {(k) => {
+                const isRunning = () => running() === k;
+                return (
+                  <button
+                    onClick={() => isRunning() ? props.onKillCommand() : props.onRunCommand(k)}
+                    disabled={!isRunning() && (!fieldValue(k).trim() || running() !== null || !props.cwd)}
+                    title={isRunning() ? `stop ${k}` : (fieldValue(k).trim() || `set ${k} command below`)}
+                    style={{
+                      flex: 1,
+                      "font-size": "10px",
+                      padding: "4px 6px",
+                      background: isRunning() ? "#2a0f12" : "var(--bg-2)",
+                      color: isRunning() ? "#fca5a5" : "var(--text-1)",
+                      border: `1px solid ${isRunning() ? "#7f1d1d" : "var(--border)"}`,
+                      "border-radius": "3px",
+                      cursor: isRunning() || (fieldValue(k).trim() && !running()) ? "pointer" : "not-allowed",
+                      opacity: isRunning() || (fieldValue(k).trim() && !running()) ? 1 : 0.5,
+                      "text-transform": "capitalize",
+                    }}
+                  >
+                    {isRunning() ? "■ stop" : `${KIND_ICON[k]} ${k}`}
+                  </button>
+                );
+              }}
             </For>
           </div>
           <For each={KINDS}>

@@ -11,3 +11,7 @@ cargo tauri build --bundles app,dmg
 
 echo "==> Output:"
 find target/release/bundle -maxdepth 3 -name "*.app" -o -name "*.dmg"
+
+echo "==> Installing to /Applications"
+cp -rf target/release/bundle/macos/CCShell.app /Applications/
+echo "    Done: /Applications/CCShell.app"

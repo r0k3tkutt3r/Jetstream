@@ -328,6 +328,7 @@ export const App: Component = () => {
           onDeleteSession: (s) => void deleteSession(s),
           onClearAllSessions: (list) => void clearAllSessions(list),
           onRunCommand: (kind) => void handleRunCommand(kind),
+          onKillCommand: handleKillCommand,
           onNewSession: () => void newSession(),
           onPickCwd: () => void pickCwd(),
           onShowToast: pushToast,

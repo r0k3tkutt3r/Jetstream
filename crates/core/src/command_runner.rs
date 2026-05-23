@@ -34,8 +34,9 @@ impl CommandRunner {
             pixel_height: 0,
         })?;
 
-        let mut cmd_builder = CommandBuilder::new("sh");
-        cmd_builder.args(["-c", cmd]);
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+        let mut cmd_builder = CommandBuilder::new(&shell);
+        cmd_builder.args(["-l", "-c", cmd]);
         cmd_builder.cwd(cwd);
 
         let child = pair.slave.spawn_command(cmd_builder)?;

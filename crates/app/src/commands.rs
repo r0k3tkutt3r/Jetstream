@@ -382,7 +382,9 @@ pub async fn run_directory_command(
         return Err(format!("cwd does not exist: {cwd}"));
     }
     let cmd_for_output = trimmed.clone();
-    let output = tokio::process::Command::new("sh")
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let output = tokio::process::Command::new(&shell)
+        .arg("-l")
         .arg("-c")
         .arg(&trimmed)
         .current_dir(&cwd_path)
