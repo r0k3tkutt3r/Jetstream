@@ -63,3 +63,12 @@ export interface Preferences {
   model: string | null;
   effort: string | null;
 }
+
+export type CommandStatus = "idle" | "streaming" | "expanded" | "completed";
+
+export interface CommandState {
+  kind: CommandKind;
+  command: string;
+  status: CommandStatus;
+  exitCode?: number;
+}

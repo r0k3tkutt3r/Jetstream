@@ -74,6 +74,21 @@ export const ipc = {
 
   setPreferences: (prefs: Preferences) =>
     invoke<void>("set_preferences", { prefs }),
+
+  startCommand: (cwd: string, kind: CommandKind) =>
+    invoke<string>("start_command", { cwd, kind }),
+
+  sendCommandInput: (data: string) =>
+    invoke<void>("send_command_input", { data }),
+
+  resizeCommand: (cols: number, rows: number) =>
+    invoke<void>("resize_command", { cols, rows }),
+
+  killCommand: () =>
+    invoke<void>("kill_command"),
+
+  getCommandBuffer: () =>
+    invoke<number[]>("get_command_buffer"),
 };
 
 export async function subscribeSession(
@@ -81,4 +96,18 @@ export async function subscribeSession(
   cb: (e: SessionEvent) => void
 ): Promise<UnlistenFn> {
   return listen<SessionEvent>(`session://${id}`, (e) => cb(e.payload));
+}
+
+export async function subscribeCommandOutput(
+  cb: (data: number[]) => void,
+): Promise<UnlistenFn> {
+  return listen<{ data: number[] }>("command://output", (e) => cb(e.payload.data));
+}
+
+export async function subscribeCommandExit(
+  cb: (exitCode: number, command: string) => void,
+): Promise<UnlistenFn> {
+  return listen<{ exit_code: number; command: string }>("command://exit", (e) =>
+    cb(e.payload.exit_code, e.payload.command),
+  );
 }
