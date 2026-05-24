@@ -224,6 +224,24 @@ pub async fn close_session(
 }
 
 #[tauri::command]
+pub fn rename_session(
+    manifest: State<'_, Mutex<Manifest>>,
+    manifest_path: State<'_, PathBuf>,
+    id: String,
+    name: String,
+) -> Result<(), String> {
+    let trimmed = name.trim().to_string();
+    if trimmed.is_empty() {
+        return Err("name cannot be empty".into());
+    }
+    let mut m = manifest.lock().unwrap();
+    if let Some(s) = m.sessions.iter_mut().find(|s| s.id == id) {
+        s.name = trimmed;
+    }
+    save_to(&manifest_path, &m).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn get_default_cwd() -> String {
     dirs::home_dir()
         .map(|p| p.display().to_string())

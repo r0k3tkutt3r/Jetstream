@@ -26,6 +26,7 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(manager)
         .manage(std::sync::Mutex::new(manifest))
         .manage(manifest_path)
@@ -37,6 +38,7 @@ fn main() {
             commands::interrupt,
             commands::list_sessions,
             commands::close_session,
+            commands::rename_session,
             commands::switch_model,
             commands::list_agents,
             commands::get_default_cwd,

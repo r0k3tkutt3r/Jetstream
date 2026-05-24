@@ -117,7 +117,7 @@ export const CenterPane: Component<CenterPaneProps> = (props) => {
       }>
         <div class="pane-header">
           <div>
-            <div style={{ "font-size": "12px" }}>{props.session!.name}</div>
+            <div style={{ "font-size": "12px" }}>{props.session!.name()}</div>
             <div style={{ "font-size": "9px", color: "var(--text-3)" }}>
               {props.session!.cwd} · {props.session!.id.slice(0, 8)}…
             </div>

@@ -45,7 +45,8 @@ export type SessionStatus = "idle" | "thinking" | "tool" | "error" | "closed";
 
 export interface SessionStore {
   id: string;
-  name: string;
+  name: Accessor<string>;
+  setName: (n: string) => void;
   cwd: string;
   mode: Accessor<PermissionMode>;
   setMode: (m: PermissionMode) => void;
@@ -81,6 +82,7 @@ interface InitArgs {
 }
 
 export function createSessionStore(init: InitArgs): SessionStore {
+  const [name, setName] = createSignal<string>(init.name);
   const [mode, setMode] = createSignal<PermissionMode>(init.mode);
   const [status, setStatus] = createSignal<SessionStatus>("idle");
   const [messages, setMessages] = createStore<Message[]>([]);
@@ -310,7 +312,8 @@ export function createSessionStore(init: InitArgs): SessionStore {
 
   return {
     id: init.id,
-    name: init.name,
+    name,
+    setName,
     cwd: init.cwd,
     mode,
     setMode,

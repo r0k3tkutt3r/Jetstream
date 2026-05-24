@@ -22,6 +22,7 @@ export interface LeftPaneProps {
   onNewSession: () => void;
   onPickCwd: () => void;
   onShowToast: (kind: "success" | "error", title: string, body: string) => void;
+  onRenameSession: (id: string, name: string) => void;
 }
 
 const MODELS = ["sonnet", "opus", "haiku"];
@@ -46,6 +47,8 @@ export const LeftPane: Component<LeftPaneProps> = (props) => {
 
   const [pendingDelete, setPendingDelete] = createSignal<SessionSummary | null>(null);
   const [confirmClearAll, setConfirmClearAll] = createSignal(false);
+  const [editingId, setEditingId] = createSignal<string | null>(null);
+  const [editValue, setEditValue] = createSignal("");
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   const scheduleSave = (next: DirectoryConfig) => {
@@ -188,7 +191,50 @@ export const LeftPane: Component<LeftPaneProps> = (props) => {
                   }}
                 >
                   <div style={{ "font-size": "11px", display: "flex", "justify-content": "space-between", "align-items": "center", gap: "6px" }}>
-                    <span style={{ flex: 1, overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>{s.name || "(unnamed)"}</span>
+                    <Show when={editingId() === s.id} fallback={
+                      <span
+                        onDblClick={(ev) => {
+                          ev.stopPropagation();
+                          setEditingId(s.id);
+                          setEditValue(s.name || "");
+                        }}
+                        style={{ flex: 1, overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}
+                        title="double-click to rename"
+                      >{s.name || "(unnamed)"}</span>
+                    }>
+                      <input
+                        ref={(el) => setTimeout(() => el.focus(), 0)}
+                        value={editValue()}
+                        onInput={(e) => setEditValue(e.currentTarget.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const val = editValue().trim();
+                            if (val) props.onRenameSession(s.id, val);
+                            setEditingId(null);
+                          } else if (e.key === "Escape") {
+                            setEditingId(null);
+                          }
+                        }}
+                        onBlur={() => {
+                          const val = editValue().trim();
+                          if (val && val !== s.name) props.onRenameSession(s.id, val);
+                          setEditingId(null);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        spellcheck={false}
+                        style={{
+                          flex: 1,
+                          "font-size": "11px",
+                          padding: "1px 4px",
+                          background: "var(--bg-2)",
+                          color: "var(--text-1)",
+                          border: "1px solid var(--accent)",
+                          "border-radius": "2px",
+                          outline: "none",
+                          "min-width": 0,
+                        }}
+                      />
+                    </Show>
                     <div style={{ display: "flex", "align-items": "center", gap: "6px" }}>
                       <Show when={!isLive()}>
                         <span style={{ "font-size": "8px", color: "var(--text-3)", opacity: 0.7 }}>saved</span>

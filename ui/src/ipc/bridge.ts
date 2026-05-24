@@ -32,6 +32,9 @@ export const ipc = {
   closeSession: (id: string) =>
     invoke<void>("close_session", { id }),
 
+  renameSession: (id: string, name: string) =>
+    invoke<void>("rename_session", { id, name }),
+
   switchModel: (id: string, model: string) =>
     invoke<SessionSummary>("switch_model", { id, model }),
 

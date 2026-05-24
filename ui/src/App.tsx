@@ -3,16 +3,45 @@ import { Layout } from "./panes/Layout";
 import { Settings } from "./settings/Settings";
 import { LiveToast } from "./render/LiveToast";
 import { CommandTerminal } from "./render/CommandTerminal";
+import { SessionNotificationStack, type SessionNotif } from "./render/SessionNotification";
 import { ipc, subscribeSession, subscribeCommandOutput, subscribeCommandExit } from "./ipc/bridge";
-import { createSessionStore, type SessionStore } from "./state/session-store";
+import { createSessionStore, type SessionStore, type SessionStatus, type Message } from "./state/session-store";
 import { dispatchSlash } from "./composer/slash-handlers";
-import type { CommandKind, SessionSummary } from "./ipc/types";
+import type { CommandKind, SessionEvent, SessionSummary } from "./ipc/types";
+import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 
 interface Toast {
   id: number;
   kind: "success" | "error";
   title: string;
   body: string;
+}
+
+function deriveSessionName(messages: Message[]): string | null {
+  const firstUser = messages.find((m) => m.role === "user");
+  if (!firstUser || !firstUser.content.trim()) return null;
+  let text = firstUser.content.trim().replace(/\n/g, " ");
+  const sentenceEnd = text.search(/[.?!]/);
+  if (sentenceEnd > 0 && sentenceEnd < 50) {
+    text = text.slice(0, sentenceEnd + 1);
+  } else if (text.length > 50) {
+    text = text.slice(0, 50);
+    const lastSpace = text.lastIndexOf(" ");
+    if (lastSpace > 30) text = text.slice(0, lastSpace);
+    text += "…";
+  }
+  return text;
+}
+
+async function sendOsNotification(title: string, body: string) {
+  let granted = await isPermissionGranted();
+  if (!granted) {
+    const permission = await requestPermission();
+    granted = permission === "granted";
+  }
+  if (granted) {
+    sendNotification({ title, body });
+  }
 }
 
 export const App: Component = () => {
@@ -40,6 +69,12 @@ export const App: Component = () => {
   let autoDismissTimer: ReturnType<typeof setTimeout> | undefined;
   let toastCounter = 0;
 
+  // Notification state
+  const [windowFocused, setWindowFocused] = createSignal(document.hasFocus());
+  const [notifications, setNotifications] = createSignal<SessionNotif[]>([]);
+  let notifCounter = 0;
+  const prevStatuses = new Map<string, SessionStatus>();
+
   const pushToast = (kind: "success" | "error", title: string, body: string) => {
     const id = ++toastCounter;
     setToasts((cur) => [...cur, { id, kind, title, body }]);
@@ -47,6 +82,21 @@ export const App: Component = () => {
   };
   const dismissToast = (id: number) =>
     setToasts((cur) => cur.filter((t) => t.id !== id));
+
+  const pushNotification = (sessionId: string, sessionName: string, reason: "done" | "question") => {
+    const id = ++notifCounter;
+    setNotifications((cur) => [...cur.slice(-2), { id, sessionId, sessionName, reason, timestamp: Date.now() }]);
+    setTimeout(() => setNotifications((cur) => cur.filter((n) => n.id !== id)), 8000);
+  };
+
+  const dismissNotification = (id: number) => {
+    setNotifications((cur) => cur.filter((n) => n.id !== id));
+  };
+
+  const handleNotifClick = (sessionId: string) => {
+    setActiveId(sessionId);
+    setNotifications([]);
+  };
 
   // Subscribe to command events
   void (async () => {
@@ -142,6 +192,54 @@ export const App: Component = () => {
     void ipc.setPreferences({ model: m, effort: e }).catch(() => {});
   });
 
+  // Window focus tracking for notification routing
+  createEffect(() => {
+    const onFocus = () => setWindowFocused(true);
+    const onBlur = () => setWindowFocused(false);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+    onCleanup(() => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
+    });
+  });
+
+  // Notification routing: watch all sessions for idle transitions
+  createEffect(() => {
+    const allStores = stores();
+    for (const [id, store] of Object.entries(allStores)) {
+      const currentStatus = store.status();
+      const prevStatus = prevStatuses.get(id);
+      prevStatuses.set(id, currentStatus);
+      if (id === activeId()) continue;
+      if (currentStatus === "idle" && prevStatus && prevStatus !== "idle" && prevStatus !== "closed") {
+        const name = store.name();
+        if (!windowFocused()) {
+          void sendOsNotification(name, "Session finished");
+        } else {
+          pushNotification(id, name, "done");
+        }
+      }
+    }
+  });
+
+  // Auto-generate session names from first user message
+  createEffect(() => {
+    const allStores = stores();
+    for (const [id, store] of Object.entries(allStores)) {
+      const msgs = store.messages();
+      const currentName = store.name();
+      if (!/^session-\d+$/.test(currentName)) continue;
+      const hasAssistant = msgs.some((m) => m.role === "assistant");
+      if (!hasAssistant) continue;
+      const derived = deriveSessionName(msgs);
+      if (derived) {
+        store.setName(derived);
+        void ipc.renameSession(id, derived);
+      }
+    }
+  });
+
   // Clear activeId if it points to a session not in the current cwd.
   createEffect(() => {
     const id = activeId();
@@ -156,7 +254,20 @@ export const App: Component = () => {
 
   const attachStore = async (s: SessionSummary): Promise<SessionStore> => {
     const store = createSessionStore(s);
-    const un = await subscribeSession(s.id, store.handleEvent);
+    const wrappedHandler = (e: SessionEvent) => {
+      store.handleEvent(e);
+      if (e.type === "Tool" && /^Ask(User|Followup)/i.test(e.name)) {
+        if (s.id !== activeId()) {
+          const name = store.name();
+          if (!windowFocused()) {
+            void sendOsNotification(name, "Asking a question");
+          } else {
+            pushNotification(s.id, name, "question");
+          }
+        }
+      }
+    };
+    const un = await subscribeSession(s.id, wrappedHandler);
     onCleanup(un);
     setStores({ ...stores(), [s.id]: store });
     return store;
@@ -347,6 +458,13 @@ export const App: Component = () => {
           onNewSession: () => void newSession(),
           onPickCwd: () => void pickCwd(),
           onShowToast: pushToast,
+          onRenameSession: (id: string, name: string) => {
+            const store = stores()[id];
+            if (store) {
+              store.setName(name);
+              void ipc.renameSession(id, name);
+            }
+          },
         }}
         center={{
           session: activeId() ? stores()[activeId()!] ?? null : null,
@@ -414,6 +532,11 @@ export const App: Component = () => {
           )}
         </For>
       </div>
+      <SessionNotificationStack
+        notifications={notifications()}
+        onDismiss={dismissNotification}
+        onClick={handleNotifClick}
+      />
       <Show when={cmdExpanded() && cmdKind()}>
         <CommandTerminal
           kind={cmdKind()!}
