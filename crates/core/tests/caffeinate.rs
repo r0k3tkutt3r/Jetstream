@@ -1,4 +1,4 @@
-use ccshell_core::caffeinate::CaffeinateCtl;
+use jetstream_core::caffeinate::CaffeinateCtl;
 use std::sync::Arc;
 
 #[test]

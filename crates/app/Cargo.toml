@@ -1,5 +1,5 @@
 [package]
-name = "ccshell-app"
+name = "jetstream-app"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ license.workspace = true
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-ccshell-core = { path = "../core" }
+jetstream-core = { path = "../core" }
 tauri        = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
@@ -21,7 +21,7 @@ tracing-subscriber = { workspace = true }
 dirs         = "5"
 
 [lib]
-name = "ccshell_app"
+name = "jetstream_app"
 path = "src/lib.rs"
 
 [dev-dependencies]

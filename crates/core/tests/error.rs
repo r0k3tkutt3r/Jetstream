@@ -1,4 +1,4 @@
-use ccshell_core::SessionError;
+use jetstream_core::SessionError;
 use std::path::PathBuf;
 use std::time::Duration;
 

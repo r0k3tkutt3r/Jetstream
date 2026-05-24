@@ -18,7 +18,7 @@ export interface SlashContext {
  * synthetic assistant message with the real output.
  *
  * Only commands with UI semantics that claude can't perform (clearing the
- * CCShell message store) or that need to respawn the underlying child
+ * Jetstream message store) or that need to respawn the underlying child
  * (switching model mid-chat) are intercepted here.
  *
  * Returns true if the command was handled locally; false to pass through.

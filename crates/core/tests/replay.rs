@@ -1,4 +1,4 @@
-use ccshell_core::session::{replay_jsonl, SessionEvent};
+use jetstream_core::session::{replay_jsonl, SessionEvent};
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 

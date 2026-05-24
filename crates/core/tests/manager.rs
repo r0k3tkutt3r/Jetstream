@@ -1,5 +1,5 @@
-use ccshell_core::manager::SessionManager;
-use ccshell_core::session::{SessionConfig, SessionEvent};
+use jetstream_core::manager::SessionManager;
+use jetstream_core::session::{SessionConfig, SessionEvent};
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time::timeout;

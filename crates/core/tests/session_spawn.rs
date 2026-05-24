@@ -1,4 +1,4 @@
-use ccshell_core::session::{Session, SessionConfig, SessionEvent};
+use jetstream_core::session::{Session, SessionConfig, SessionEvent};
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time::timeout;

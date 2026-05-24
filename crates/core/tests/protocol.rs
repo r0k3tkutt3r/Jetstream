@@ -1,4 +1,4 @@
-use ccshell_core::protocol::{parse_line, StreamJsonEvent};
+use jetstream_core::protocol::{parse_line, StreamJsonEvent};
 use std::path::PathBuf;
 
 fn fixture(name: &str) -> String {
@@ -31,13 +31,13 @@ fn parses_tool_use_and_result() {
                 if message
                     .content
                     .iter()
-                    .any(|b| matches!(b, ccshell_core::protocol::ContentBlock::ToolUse { .. })) =>
+                    .any(|b| matches!(b, jetstream_core::protocol::ContentBlock::ToolUse { .. })) =>
             {
                 seen_tool_use = true;
             }
             StreamJsonEvent::User { message }
                 if message.content.iter().any(|b| {
-                    matches!(b, ccshell_core::protocol::ContentBlock::ToolResult { .. })
+                    matches!(b, jetstream_core::protocol::ContentBlock::ToolResult { .. })
                 }) =>
             {
                 seen_tool_result = true;

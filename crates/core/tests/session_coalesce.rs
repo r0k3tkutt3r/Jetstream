@@ -1,5 +1,5 @@
-use ccshell_core::session::coalesce_deltas;
-use ccshell_core::session::SessionEvent;
+use jetstream_core::session::coalesce_deltas;
+use jetstream_core::session::SessionEvent;
 use std::time::Duration;
 use tokio::sync::mpsc;
 

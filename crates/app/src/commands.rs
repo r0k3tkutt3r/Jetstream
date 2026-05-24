@@ -1,8 +1,8 @@
-use ccshell_app::state::{save_to, DirectoryConfig, Manifest, ManifestSession};
-use ccshell_core::agents::AgentRegistry;
-use ccshell_core::command_runner::{CommandEvent, CommandRunner};
-use ccshell_core::manager::SessionManager;
-use ccshell_core::session::{cycle_mode as core_cycle_mode, SessionConfig};
+use jetstream_app::state::{save_to, DirectoryConfig, Manifest, ManifestSession};
+use jetstream_core::agents::AgentRegistry;
+use jetstream_core::command_runner::{CommandEvent, CommandRunner};
+use jetstream_core::manager::SessionManager;
+use jetstream_core::session::{cycle_mode as core_cycle_mode, SessionConfig};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -526,7 +526,7 @@ pub fn get_command_buffer(runner_state: State<'_, CommandRunnerState>) -> Result
 }
 
 #[tauri::command]
-pub fn list_agents() -> Vec<ccshell_core::agents::Agent> {
+pub fn list_agents() -> Vec<jetstream_core::agents::Agent> {
     let mut paths = vec![];
     if let Some(home) = dirs::home_dir() {
         paths.push(home.join(".claude/agents"));
@@ -614,7 +614,7 @@ pub async fn replay_session(
     manifest: State<'_, std::sync::Mutex<Manifest>>,
     id: Uuid,
 ) -> Result<(), String> {
-    use ccshell_core::session::replay_jsonl;
+    use jetstream_core::session::replay_jsonl;
 
     let session = {
         let manifest_guard = manifest.lock().unwrap();

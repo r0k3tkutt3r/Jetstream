@@ -95,7 +95,7 @@ impl Default for Manifest {
 pub fn default_path() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(std::env::temp_dir)
-        .join("CCShell/state.json")
+        .join("Jetstream/state.json")
 }
 
 pub fn load_from(path: &Path) -> std::io::Result<Manifest> {

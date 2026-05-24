@@ -2,8 +2,8 @@
 
 mod commands;
 
-use ccshell_app::state::{default_path, load_from};
-use ccshell_core::manager::SessionManager;
+use jetstream_app::state::{default_path, load_from};
+use jetstream_core::manager::SessionManager;
 use std::sync::Arc;
 
 fn main() {

@@ -1,4 +1,4 @@
-use ccshell_core::session::{project_subagents, SessionEvent};
+use jetstream_core::session::{project_subagents, SessionEvent};
 
 #[test]
 fn start_then_stop_marks_complete() {

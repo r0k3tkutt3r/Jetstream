@@ -1,4 +1,4 @@
-use ccshell_core::agents::AgentRegistry;
+use jetstream_core::agents::AgentRegistry;
 use std::fs;
 use tempfile::tempdir;
 

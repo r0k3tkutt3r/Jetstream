@@ -1,4 +1,4 @@
-# CCShell
+# Jetstream
 
 A Tauri desktop app that wraps the `claude` CLI as a multi-session, multi-pane GUI shell. Built with a Rust backend (`crates/core`, `crates/app`) and a SolidJS frontend (`ui/src`).
 
@@ -8,7 +8,7 @@ A Tauri desktop app that wraps the `claude` CLI as a multi-session, multi-pane G
 
 To build and run for testing:
 ```bash
-cd /Users/kushmodi/Coding/CursorProjects/CCShell
+cd /Users/kushmodi/Coding/CursorProjects/Jetstream
 cargo tauri dev
 ```
 
@@ -17,7 +17,7 @@ cargo tauri dev
 - **Backend**: Rust, Tauri v2, Tokio async runtime
 - **Frontend**: SolidJS + TypeScript (Vite, pnpm)
 - **Protocol**: `claude` CLI in `--output-format stream-json --input-format stream-json` mode
-- **Persistence**: JSON manifest at `~/Library/Application Support/CCShell/state.json`
+- **Persistence**: JSON manifest at `~/Library/Application Support/Jetstream/state.json`
 - **Session transcripts**: `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`
 
 ## Workspace Structure
@@ -109,7 +109,7 @@ Typing `/` opens an autocomplete palette. On submit:
 
 ## State Persistence (Manifest)
 
-File: `~/Library/Application Support/CCShell/state.json`
+File: `~/Library/Application Support/Jetstream/state.json`
 
 Fields: `sessions[]`, `window` (width/height, pane visibility), `theme`, `font_family`, `font_size`, `last_cwd`, `directories` (map of cwd → `DirectoryConfig`), `model`, `effort`.
 
@@ -140,8 +140,8 @@ cargo tauri dev
 cargo tauri build
 
 # Backend tests
-cargo test -p ccshell-core
-cargo test -p ccshell-app
+cargo test -p jetstream-core
+cargo test -p jetstream-app
 ```
 
 Set `CCSHELL_CLAUDE_BIN=/path/to/claude` to override the auto-detected claude binary. Default lookup order: env var → `which claude` → known paths (`~/.local/bin/claude`, `/usr/local/bin/claude`, `/opt/homebrew/bin/claude`).

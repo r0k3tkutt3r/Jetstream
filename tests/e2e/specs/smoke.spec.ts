@@ -1,6 +1,6 @@
 import { browser, $, expect } from "@wdio/globals";
 
-describe("CCShell smoke", () => {
+describe("Jetstream smoke", () => {
   it("renders the layout", async () => {
     await browser.pause(1000);
     const layout = await $(".layout");

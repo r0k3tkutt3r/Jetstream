@@ -1,4 +1,4 @@
-use ccshell_app::state::{load_from, save_to, DirectoryConfig, Manifest, ManifestSession};
+use jetstream_app::state::{load_from, save_to, DirectoryConfig, Manifest, ManifestSession};
 use std::collections::HashMap;
 use tempfile::tempdir;
 
