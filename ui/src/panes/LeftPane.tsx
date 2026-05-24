@@ -23,6 +23,7 @@ export interface LeftPaneProps {
   onPickCwd: () => void;
   onShowToast: (kind: "success" | "error", title: string, body: string) => void;
   onRenameSession: (id: string, name: string) => void;
+  getStoreName: (id: string) => string | null;
 }
 
 const MODELS = ["sonnet", "opus", "haiku"];
@@ -176,6 +177,7 @@ export const LeftPane: Component<LeftPaneProps> = (props) => {
                 }
                 setPendingDelete(s);
               };
+              const displayName = () => props.getStoreName(s.id) || s.name || "(unnamed)";
               return (
                 <div
                   onClick={() => props.onActivateSession(s)}
@@ -196,11 +198,11 @@ export const LeftPane: Component<LeftPaneProps> = (props) => {
                         onDblClick={(ev) => {
                           ev.stopPropagation();
                           setEditingId(s.id);
-                          setEditValue(s.name || "");
+                          setEditValue(displayName());
                         }}
                         style={{ flex: 1, overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}
                         title="double-click to rename"
-                      >{s.name || "(unnamed)"}</span>
+                      >{displayName()}</span>
                     }>
                       <input
                         ref={(el) => setTimeout(() => el.focus(), 0)}

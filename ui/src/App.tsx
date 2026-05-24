@@ -5,7 +5,7 @@ import { LiveToast } from "./render/LiveToast";
 import { CommandTerminal } from "./render/CommandTerminal";
 import { SessionNotificationStack, type SessionNotif } from "./render/SessionNotification";
 import { ipc, subscribeSession, subscribeCommandOutput, subscribeCommandExit } from "./ipc/bridge";
-import { createSessionStore, type SessionStore, type SessionStatus, type Message } from "./state/session-store";
+import { createSessionStore, type SessionStore, type Message } from "./state/session-store";
 import { dispatchSlash } from "./composer/slash-handlers";
 import type { CommandKind, SessionEvent, SessionSummary } from "./ipc/types";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
@@ -73,7 +73,6 @@ export const App: Component = () => {
   const [windowFocused, setWindowFocused] = createSignal(document.hasFocus());
   const [notifications, setNotifications] = createSignal<SessionNotif[]>([]);
   let notifCounter = 0;
-  const prevStatuses = new Map<string, SessionStatus>();
 
   const pushToast = (kind: "success" | "error", title: string, body: string) => {
     const id = ++toastCounter;
@@ -204,41 +203,7 @@ export const App: Component = () => {
     });
   });
 
-  // Notification routing: watch all sessions for idle transitions
-  createEffect(() => {
-    const allStores = stores();
-    for (const [id, store] of Object.entries(allStores)) {
-      const currentStatus = store.status();
-      const prevStatus = prevStatuses.get(id);
-      prevStatuses.set(id, currentStatus);
-      if (id === activeId()) continue;
-      if (currentStatus === "idle" && prevStatus && prevStatus !== "idle" && prevStatus !== "closed") {
-        const name = store.name();
-        if (!windowFocused()) {
-          void sendOsNotification(name, "Session finished");
-        } else {
-          pushNotification(id, name, "done");
-        }
-      }
-    }
-  });
-
-  // Auto-generate session names from first user message
-  createEffect(() => {
-    const allStores = stores();
-    for (const [id, store] of Object.entries(allStores)) {
-      const msgs = store.messages();
-      const currentName = store.name();
-      if (!/^session-\d+$/.test(currentName)) continue;
-      const hasAssistant = msgs.some((m) => m.role === "assistant");
-      if (!hasAssistant) continue;
-      const derived = deriveSessionName(msgs);
-      if (derived) {
-        store.setName(derived);
-        void ipc.renameSession(id, derived);
-      }
-    }
-  });
+  // (Notification routing is handled in the wrappedHandler inside attachStore)
 
   // Clear activeId if it points to a session not in the current cwd.
   createEffect(() => {
@@ -254,8 +219,38 @@ export const App: Component = () => {
 
   const attachStore = async (s: SessionSummary): Promise<SessionStore> => {
     const store = createSessionStore(s);
+    let autoNamed = false;
+    let wasBusy = false;
     const wrappedHandler = (e: SessionEvent) => {
       store.handleEvent(e);
+      // Notification routing: detect idle transition for non-active sessions
+      if (e.type === "Assistant" || e.type === "Tool") {
+        wasBusy = true;
+      }
+      if (e.type === "Result" && wasBusy) {
+        wasBusy = false;
+        if (s.id !== activeId()) {
+          const name = store.name();
+          if (!windowFocused()) {
+            void sendOsNotification(name, "Session finished");
+          } else {
+            pushNotification(s.id, name, "done");
+          }
+        }
+      }
+      // Auto-name on first assistant message
+      if (!autoNamed && e.type === "Result") {
+        const currentName = store.name();
+        if (/^session-\d+$/.test(currentName)) {
+          const derived = deriveSessionName(store.messages());
+          if (derived) {
+            autoNamed = true;
+            store.setName(derived);
+            void ipc.renameSession(s.id, derived);
+          }
+        }
+      }
+      // Detect AskUser tool calls for notifications
       if (e.type === "Tool" && /^Ask(User|Followup)/i.test(e.name)) {
         if (s.id !== activeId()) {
           const name = store.name();
@@ -464,6 +459,10 @@ export const App: Component = () => {
               store.setName(name);
               void ipc.renameSession(id, name);
             }
+          },
+          getStoreName: (id: string) => {
+            const store = stores()[id];
+            return store ? store.name() : null;
           },
         }}
         center={{
