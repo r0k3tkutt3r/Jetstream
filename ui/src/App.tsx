@@ -219,52 +219,46 @@ export const App: Component = () => {
 
   const attachStore = async (s: SessionSummary): Promise<SessionStore> => {
     const store = createSessionStore(s);
-    let autoNamed = false;
     let wasBusy = false;
+    let autoNamed = false;
     const wrappedHandler = (e: SessionEvent) => {
       store.handleEvent(e);
-      // Notification routing: detect idle transition for non-active sessions
-      if (e.type === "Assistant" || e.type === "Tool") {
-        wasBusy = true;
-      }
+      if (e.type === "Assistant" || e.type === "Tool") wasBusy = true;
+      // Notification: session finished
       if (e.type === "Result" && wasBusy) {
         wasBusy = false;
         if (s.id !== activeId()) {
-          const name = store.name();
-          if (!windowFocused()) {
-            void sendOsNotification(name, "Session finished");
-          } else {
-            pushNotification(s.id, name, "done");
-          }
+          const nm = store.name();
+          if (!windowFocused()) void sendOsNotification(nm, "Session finished");
+          else pushNotification(s.id, nm, "done");
         }
       }
-      // Auto-name on first Result event
-      if (!autoNamed && e.type === "Result") {
-        const currentName = store.name();
-        if (/^session-\d+$/.test(currentName)) {
-          const msgs: Message[] = [...store.messages()];
-          const derived = deriveSessionName(msgs);
-          if (derived) {
-            autoNamed = true;
-            store.setName(derived);
-            void ipc.renameSession(s.id, derived);
-          }
-        }
-      }
-      // Detect AskUser tool calls for notifications
+      // Notification: AskUser tool
       if (e.type === "Tool" && /^Ask(User|Followup)/i.test(e.name)) {
         if (s.id !== activeId()) {
-          const name = store.name();
-          if (!windowFocused()) {
-            void sendOsNotification(name, "Asking a question");
-          } else {
-            pushNotification(s.id, name, "question");
-          }
+          const nm = store.name();
+          if (!windowFocused()) void sendOsNotification(nm, "Asking a question");
+          else pushNotification(s.id, nm, "question");
         }
       }
     };
     const un = await subscribeSession(s.id, wrappedHandler);
     onCleanup(un);
+    // Auto-naming: watch status signal for idle transition
+    createEffect(() => {
+      const st = store.status();
+      if (autoNamed || st !== "idle") return;
+      const currentName = store.name();
+      if (!/^session-\d+$/.test(currentName)) return;
+      const msgs: Message[] = [...store.messages()];
+      if (!msgs.some((m) => m.role === "assistant")) return;
+      const derived = deriveSessionName(msgs);
+      if (derived) {
+        autoNamed = true;
+        store.setName(derived);
+        void ipc.renameSession(s.id, derived);
+      }
+    });
     setStores({ ...stores(), [s.id]: store });
     return store;
   };
