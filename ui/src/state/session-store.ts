@@ -65,6 +65,8 @@ export interface SessionStore {
   turnInputTokens: Accessor<number>;
   turnOutputTokens: Accessor<number>;
   todos: Accessor<Todo[]>;
+  draft: Accessor<string>;
+  setDraft: (text: string) => void;
 
   handleEvent: (e: SessionEvent) => void;
   appendUserMessage: (text: string) => void;
@@ -108,6 +110,7 @@ export function createSessionStore(init: InitArgs): SessionStore {
   const [turnInputTokens, setTurnInputTokens] = createSignal<number>(0);
   const [turnOutputTokens, setTurnOutputTokens] = createSignal<number>(0);
   const [todos, setTodos] = createSignal<Todo[]>([]);
+  const [draft, setDraft] = createSignal<string>("");
 
   function markTurnStart() {
     if (turnStartedAt() === null) {
@@ -334,6 +337,8 @@ export function createSessionStore(init: InitArgs): SessionStore {
     turnInputTokens,
     turnOutputTokens,
     todos,
+    draft,
+    setDraft,
     handleEvent,
     appendUserMessage,
     appendSyntheticAssistant,

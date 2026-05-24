@@ -31,7 +31,9 @@ export interface CenterPaneProps {
 }
 
 export const CenterPane: Component<CenterPaneProps> = (props) => {
-  const [input, setInput] = createSignal("");
+  const [localInput, setLocalInput] = createSignal("");
+  const input = () => props.session?.draft() ?? localInput();
+  const setInput = (v: string) => { props.session ? props.session.setDraft(v) : setLocalInput(v); };
   const [slashCommands] = createResource(() => ipc.listSlashCommands());
   const [highlight, setHighlight] = createSignal(0);
   // Up/Down history navigation. -1 = not in history; 0..N-1 indexes from newest.
