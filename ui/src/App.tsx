@@ -37,6 +37,7 @@ export const App: Component = () => {
   const [cmdExpanded, setCmdExpanded] = createSignal(false);
   const [cmdRunning, setCmdRunning] = createSignal(false);
   let cmdOutputListeners: Array<(data: number[]) => void> = [];
+  let autoDismissTimer: ReturnType<typeof setTimeout> | undefined;
   let toastCounter = 0;
 
   const pushToast = (kind: "success" | "error", title: string, body: string) => {
@@ -70,10 +71,14 @@ export const App: Component = () => {
       setCmdRunning(false);
       setCmdExitCode(exitCode);
       if (!cmdExpanded()) {
-        setTimeout(() => {
-          setCmdKind(null);
-          setCmdLines([]);
-          setCmdExitCode(undefined);
+        if (autoDismissTimer) clearTimeout(autoDismissTimer);
+        autoDismissTimer = setTimeout(() => {
+          autoDismissTimer = undefined;
+          if (!cmdExpanded()) {
+            setCmdKind(null);
+            setCmdLines([]);
+            setCmdExitCode(undefined);
+          }
         }, 8000);
       }
     });
@@ -83,6 +88,7 @@ export const App: Component = () => {
   const handleRunCommand = async (kind: CommandKind) => {
     const cwd = currentCwd();
     if (!cwd) return;
+    if (autoDismissTimer) { clearTimeout(autoDismissTimer); autoDismissTimer = undefined; }
     setCmdKind(kind);
     setCmdCommand("");
     setCmdLines([]);
@@ -175,9 +181,17 @@ export const App: Component = () => {
   };
 
   const activateSession = async (s: SessionSummary) => {
-    if (stores()[s.id]) {
+    const existing = stores()[s.id];
+    if (existing && existing.status() !== "closed" && existing.status() !== "error") {
       setActiveId(s.id);
       return;
+    }
+    if (existing) {
+      setStores((cur) => {
+        const next = { ...cur };
+        delete next[s.id];
+        return next;
+      });
     }
     try {
       const fresh = await ipc.resumeSession({ id: s.id, cwd: s.cwd, name: s.name });
@@ -301,6 +315,7 @@ export const App: Component = () => {
       if (e.metaKey && e.key === "n")   { e.preventDefault(); void newSession();         return; }
       if (e.metaKey && e.key === "o")   { e.preventDefault(); void pickCwd();            return; }
       if (e.metaKey && e.key === ",")   { e.preventDefault(); setSettingsOpen(true);     return; }
+      if (e.ctrlKey && e.key === "c")   { e.preventDefault(); const id = activeId(); if (id) void ipc.interrupt(id); return; }
     };
     window.addEventListener("keydown", handler);
     onCleanup(() => window.removeEventListener("keydown", handler));
@@ -338,7 +353,9 @@ export const App: Component = () => {
           model: model(),
           effort: effort(),
           onSend: (t) => void send(t),
+          onDirectSend: (t) => { const id = activeId(); if (id) void sendNow(id, t); },
           onCycleMode: () => void cycle(),
+          onInterrupt: () => { const id = activeId(); if (id) void ipc.interrupt(id); },
         }}
         right={{
           session: activeId() ? stores()[activeId()!] ?? null : null,
@@ -359,9 +376,13 @@ export const App: Component = () => {
             status={cmdRunning() ? "streaming" : "completed"}
             lines={cmdLines()}
             exitCode={cmdExitCode()}
-            onExpand={() => setCmdExpanded(true)}
+            onExpand={() => {
+              if (autoDismissTimer) { clearTimeout(autoDismissTimer); autoDismissTimer = undefined; }
+              setCmdExpanded(true);
+            }}
             onKill={handleKillCommand}
             onDismiss={() => {
+              if (autoDismissTimer) { clearTimeout(autoDismissTimer); autoDismissTimer = undefined; }
               setCmdKind(null);
               setCmdLines([]);
               setCmdExitCode(undefined);

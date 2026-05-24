@@ -10,17 +10,24 @@ export interface ToolCall {
   isError?: boolean;
 }
 
+export interface SubagentRef {
+  id: string;
+  agent: string;
+  description: string;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   tools?: ToolCall[];
-  subagentRefs?: string[];
+  subagentRefs?: SubagentRef[];
 }
 
 export interface SubagentRecord {
   id: string;
   agent: string;
+  description: string;
   prompt: string;
   startedAt: number;
   completed: boolean;
@@ -156,6 +163,23 @@ export function createSessionStore(init: InitArgs): SessionStore {
             ));
           }
         }
+        if (e.name === "Agent") {
+          const input = e.input as { subagent_type?: string; description?: string; prompt?: string } | null;
+          const agentName = input?.subagent_type ?? "agent";
+          const agentDesc = input?.description ?? "";
+          const agentPrompt = input?.prompt ?? "";
+          setSubagents(produce((draft) => {
+            draft[e.id] = { id: e.id, agent: agentName, description: agentDesc,
+                            prompt: agentPrompt, startedAt: Date.now(), completed: false };
+          }));
+          setMessages(produce((draft) => {
+            const last = draft[draft.length - 1];
+            if (last && last.role === "assistant") {
+              last.subagentRefs ||= [];
+              last.subagentRefs.push({ id: e.id, agent: agentName, description: agentDesc });
+            }
+          }));
+        }
         setStatus("tool");
         setLastActivity(`${e.name}…`);
         markTurnStart();
@@ -169,18 +193,25 @@ export function createSessionStore(init: InitArgs): SessionStore {
             if (t) { t.output = e.output; t.isError = e.is_error; }
           }
         }));
+        // Complete any subagent that was started by the matching Agent tool call
+        setSubagents(produce((draft) => {
+          if (draft[e.id]) {
+            draft[e.id].completed = true;
+            draft[e.id].result = e.output;
+          }
+        }));
         break;
       }
       case "SubagentStart": {
         setSubagents(produce((draft) => {
-          draft[e.id] = { id: e.id, agent: e.agent, prompt: e.prompt,
-                          startedAt: Date.now(), completed: false };
+          draft[e.id] = { id: e.id, agent: e.agent, description: "",
+                          prompt: e.prompt, startedAt: Date.now(), completed: false };
         }));
         setMessages(produce((draft) => {
           const last = draft[draft.length - 1];
           if (last && last.role === "assistant") {
             last.subagentRefs ||= [];
-            last.subagentRefs.push(e.id);
+            last.subagentRefs.push({ id: e.id, agent: e.agent, description: "" });
           }
         }));
         setLastActivity(`agent: ${e.agent}`);

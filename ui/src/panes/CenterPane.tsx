@@ -25,7 +25,9 @@ export interface CenterPaneProps {
   model: string;
   effort: string;
   onSend: (text: string) => void;
+  onDirectSend: (text: string) => void;
   onCycleMode: () => void;
+  onInterrupt: () => void;
 }
 
 export const CenterPane: Component<CenterPaneProps> = (props) => {
@@ -147,6 +149,7 @@ export const CenterPane: Component<CenterPaneProps> = (props) => {
         <MessageList
           messages={props.session!.messages()}
           scrollRef={() => {}}
+          onAnswer={props.onDirectSend}
         />
 
         <TodoPanel todos={props.session!.todos()} />
@@ -263,6 +266,11 @@ export const CenterPane: Component<CenterPaneProps> = (props) => {
                     setHighlight(0);
                     return;
                   }
+                }
+                if (e.ctrlKey && e.key === "c") {
+                  e.preventDefault();
+                  props.onInterrupt();
+                  return;
                 }
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
