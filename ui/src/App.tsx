@@ -1,4 +1,4 @@
-import { Component, For, Show, createEffect, createSignal, onCleanup } from "solid-js";
+import { Component, For, Show, createEffect, createResource, createSignal, onCleanup } from "solid-js";
 import { Layout } from "./panes/Layout";
 import { Settings } from "./settings/Settings";
 import { LiveToast } from "./render/LiveToast";
@@ -55,6 +55,10 @@ export const App: Component = () => {
   const [fontSize, setFontSize] = createSignal(13);
   const [currentCwd, setCurrentCwd] = createSignal<string>("");
   const [refreshKey, setRefreshKey] = createSignal(0);
+  const [sessionList] = createResource(
+    () => [currentCwd(), refreshKey()] as const,
+    async ([cwd]) => (cwd ? await ipc.listSessionsForCwd(cwd) : []),
+  );
   const [toasts, setToasts] = createSignal<Toast[]>([]);
   const [model, setModel] = createSignal<string>("sonnet");
   const [effort, setEffort] = createSignal<string>("medium");
@@ -415,6 +419,15 @@ export const App: Component = () => {
       if (e.metaKey && e.key === "o")   { e.preventDefault(); void pickCwd();            return; }
       if (e.metaKey && e.key === ",")   { e.preventDefault(); setSettingsOpen(true);     return; }
       if (e.ctrlKey && e.key === "c")   { e.preventDefault(); const id = activeId(); if (id) void ipc.interrupt(id); return; }
+      if (e.metaKey && e.key >= "1" && e.key <= "9") {
+        e.preventDefault();
+        const idx = parseInt(e.key) - 1;
+        const list = sessionList();
+        if (list && idx < list.length) {
+          void activateSession(list[idx]);
+        }
+        return;
+      }
     };
     window.addEventListener("keydown", handler);
     onCleanup(() => window.removeEventListener("keydown", handler));
