@@ -1,4 +1,4 @@
-import { Component, For, Show, createEffect, createSignal, onCleanup } from "solid-js";
+import { Component, For, Show, createEffect, createSignal, getOwner, runWithOwner, onCleanup } from "solid-js";
 import { Layout } from "./panes/Layout";
 import { Settings } from "./settings/Settings";
 import { LiveToast } from "./render/LiveToast";
@@ -45,6 +45,7 @@ async function sendOsNotification(title: string, body: string) {
 }
 
 export const App: Component = () => {
+  const owner = getOwner();
   const [stores, setStores] = createSignal<Record<string, SessionStore>>({});
   const [activeId, setActiveId] = createSignal<string | null>(null);
   const [showLeft, setShowLeft] = createSignal(true);
@@ -243,20 +244,23 @@ export const App: Component = () => {
       }
     };
     // Auto-naming: watch status signal for idle transition
-    // Must be before any await to preserve SolidJS owner context
-    createEffect(() => {
-      const st = store.status();
-      if (autoNamed || st !== "idle") return;
-      const currentName = store.name();
-      if (!/^session-\d+$/.test(currentName)) return;
-      const msgs: Message[] = [...store.messages()];
-      if (!msgs.some((m) => m.role === "assistant")) return;
-      const derived = deriveSessionName(msgs);
-      if (derived) {
-        autoNamed = true;
-        store.setName(derived);
-        void ipc.renameSession(s.id, derived);
-      }
+    // Use runWithOwner because attachStore is called from click handlers
+    // which lack a SolidJS reactive owner
+    runWithOwner(owner, () => {
+      createEffect(() => {
+        const st = store.status();
+        if (autoNamed || st !== "idle") return;
+        const currentName = store.name();
+        if (!/^session-\d+$/.test(currentName)) return;
+        const msgs: Message[] = [...store.messages()];
+        if (!msgs.some((m) => m.role === "assistant")) return;
+        const derived = deriveSessionName(msgs);
+        if (derived) {
+          autoNamed = true;
+          store.setName(derived);
+          void ipc.renameSession(s.id, derived);
+        }
+      });
     });
     const un = await subscribeSession(s.id, wrappedHandler);
     onCleanup(un);
