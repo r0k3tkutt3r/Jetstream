@@ -48,6 +48,7 @@ export interface SessionStore {
   name: Accessor<string>;
   setName: (n: string) => void;
   cwd: string;
+  onResult: ((store: SessionStore) => void) | null;
   mode: Accessor<PermissionMode>;
   setMode: (m: PermissionMode) => void;
   status: Accessor<SessionStatus>;
@@ -240,6 +241,7 @@ export function createSessionStore(init: InitArgs): SessionStore {
         setStatus("idle");
         setLastActivity(null);
         markTurnEnd();
+        if (self.onResult) self.onResult(self);
         break;
       }
       case "TurnUpdate": {
@@ -310,11 +312,12 @@ export function createSessionStore(init: InitArgs): SessionStore {
     setTodos([]);
   }
 
-  return {
+  const self: SessionStore = {
     id: init.id,
     name,
     setName,
     cwd: init.cwd,
+    onResult: null,
     mode,
     setMode,
     status,
@@ -339,4 +342,5 @@ export function createSessionStore(init: InitArgs): SessionStore {
     drainQueue,
     reset,
   };
+  return self;
 }
