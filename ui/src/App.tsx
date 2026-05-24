@@ -242,9 +242,8 @@ export const App: Component = () => {
         }
       }
     };
-    const un = await subscribeSession(s.id, wrappedHandler);
-    onCleanup(un);
     // Auto-naming: watch status signal for idle transition
+    // Must be before any await to preserve SolidJS owner context
     createEffect(() => {
       const st = store.status();
       if (autoNamed || st !== "idle") return;
@@ -259,6 +258,8 @@ export const App: Component = () => {
         void ipc.renameSession(s.id, derived);
       }
     });
+    const un = await subscribeSession(s.id, wrappedHandler);
+    onCleanup(un);
     setStores({ ...stores(), [s.id]: store });
     return store;
   };
