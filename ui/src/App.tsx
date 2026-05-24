@@ -238,11 +238,12 @@ export const App: Component = () => {
           }
         }
       }
-      // Auto-name on first assistant message
+      // Auto-name on first Result event
       if (!autoNamed && e.type === "Result") {
         const currentName = store.name();
         if (/^session-\d+$/.test(currentName)) {
-          const derived = deriveSessionName(store.messages());
+          const msgs: Message[] = [...store.messages()];
+          const derived = deriveSessionName(msgs);
           if (derived) {
             autoNamed = true;
             store.setName(derived);
