@@ -195,13 +195,7 @@ export const LeftPane: Component<LeftPaneProps> = (props) => {
                   <div style={{ "font-size": "11px", display: "flex", "justify-content": "space-between", "align-items": "center", gap: "6px" }}>
                     <Show when={editingId() === s.id} fallback={
                       <span
-                        onDblClick={(ev) => {
-                          ev.stopPropagation();
-                          setEditingId(s.id);
-                          setEditValue(displayName());
-                        }}
                         style={{ flex: 1, overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}
-                        title="double-click to rename"
                       >{displayName()}</span>
                     }>
                       <input
@@ -242,6 +236,21 @@ export const LeftPane: Component<LeftPaneProps> = (props) => {
                         <span style={{ "font-size": "8px", color: "var(--text-3)", opacity: 0.7 }}>saved</span>
                       </Show>
                       <Show when={hovered()}>
+                        <span
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            setEditingId(s.id);
+                            setEditValue(displayName());
+                          }}
+                          title="rename session"
+                          style={{
+                            "font-size": "10px",
+                            color: "var(--text-3)",
+                            cursor: "pointer",
+                            padding: "0 2px",
+                            "line-height": 1,
+                          }}
+                        >✎</span>
                         <span
                           onClick={handleDelete}
                           title="delete session (shift+click to skip prompt)"
