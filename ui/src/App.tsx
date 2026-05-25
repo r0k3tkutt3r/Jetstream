@@ -482,6 +482,7 @@ export const App: Component = () => {
         }}
         right={{
           session: activeId() ? stores()[activeId()!] ?? null : null,
+          model: model(),
         }}
       />
       <Settings

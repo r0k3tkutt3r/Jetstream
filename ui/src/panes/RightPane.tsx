@@ -5,9 +5,13 @@ import type { SessionStore, SubagentRecord } from "../state/session-store";
 
 export interface RightPaneProps {
   session: SessionStore | null;
+  model: string;
 }
 
-const DEFAULT_CONTEXT_WINDOW = 1_000_000;
+function contextWindowForModel(model: string): number {
+  if (model === "opus") return 1_000_000;
+  return 200_000;
+}
 
 function fmtTokens(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
@@ -151,14 +155,16 @@ export const RightPane: Component<RightPaneProps> = (props) => {
     return props.session.subagents()[id] ?? null;
   };
 
-  const liveTokens = () => {
+  const liveContextTokens = () => {
     void tick();
-    return (props.session?.cumulativeTokens() ?? 0)
-      + (props.session?.turnInputTokens() ?? 0)
-      + (props.session?.turnOutputTokens() ?? 0);
+    const turnIn = props.session?.turnInputTokens() ?? 0;
+    const turnOut = props.session?.turnOutputTokens() ?? 0;
+    if (turnIn > 0) return turnIn + turnOut;
+    return props.session?.contextUsage() ?? 0;
   };
 
-  const ctxPct = () => Math.min(100, (liveTokens() / DEFAULT_CONTEXT_WINDOW) * 100);
+  const contextWindow = () => contextWindowForModel(props.model);
+  const ctxPct = () => Math.min(100, (liveContextTokens() / contextWindow()) * 100);
 
   const liveCost = () => {
     void tick();
@@ -238,7 +244,7 @@ export const RightPane: Component<RightPaneProps> = (props) => {
           }}>
             <div class="section-label" style={{ "margin-bottom": 0 }}>Context</div>
             <div style={{ "font-size": "10px", color: "var(--text-2)", display: "flex", "justify-content": "space-between" }}>
-              <span>{fmtTokens(liveTokens())} / {fmtTokens(DEFAULT_CONTEXT_WINDOW)}</span>
+              <span>{fmtTokens(liveContextTokens())} / {fmtTokens(contextWindow())}</span>
               <span>{ctxPct().toFixed(1)}%</span>
             </div>
             <div style={{

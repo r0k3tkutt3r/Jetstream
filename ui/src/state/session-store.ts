@@ -56,7 +56,7 @@ export interface SessionStore {
   subagents: Accessor<Record<string, SubagentRecord>>;
   usage: Accessor<Usage | null>;
   cost: Accessor<number>;
-  cumulativeTokens: Accessor<number>;
+  contextUsage: Accessor<number>;
   queue: Accessor<string[]>;
   history: Accessor<string[]>;
   pushHistory: (text: string) => void;
@@ -92,7 +92,7 @@ export function createSessionStore(init: InitArgs): SessionStore {
   const [subagents, setSubagents] = createStore<Record<string, SubagentRecord>>({});
   const [usage, setUsage] = createSignal<Usage | null>(null);
   const [cost, setCost] = createSignal<number>(0);
-  const [cumulativeTokens, setCumulativeTokens] = createSignal<number>(0);
+  const [contextUsage, setContextUsage] = createSignal<number>(0);
   const [queue, setQueue] = createStore<string[]>([]);
   const [history, setHistory] = createSignal<string[]>([]);
   const HISTORY_CAP = 5;
@@ -235,12 +235,11 @@ export function createSessionStore(init: InitArgs): SessionStore {
       case "Result": {
         setUsage(e.usage);
         setCost((c) => c + e.cost_usd);
-        const turnTokens =
+        const totalInput =
           (e.usage?.input_tokens ?? 0) +
-          (e.usage?.output_tokens ?? 0) +
           (e.usage?.cache_read_input_tokens ?? 0) +
           (e.usage?.cache_creation_input_tokens ?? 0);
-        setCumulativeTokens((n) => n + turnTokens);
+        setContextUsage(totalInput + (e.usage?.output_tokens ?? 0));
         setStatus("idle");
         setLastActivity(null);
         markTurnEnd();
@@ -308,7 +307,7 @@ export function createSessionStore(init: InitArgs): SessionStore {
     setSubagents({});
     setUsage(null);
     setCost(0);
-    setCumulativeTokens(0);
+    setContextUsage(0);
     setQueue([]);
     setStatus("idle");
     setLastActivity(null);
@@ -328,7 +327,7 @@ export function createSessionStore(init: InitArgs): SessionStore {
     subagents: () => subagents,
     usage,
     cost,
-    cumulativeTokens,
+    contextUsage,
     queue: () => queue,
     history,
     pushHistory,

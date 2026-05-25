@@ -254,11 +254,11 @@ pub fn list_sessions_for_cwd(
     manifest: State<'_, Mutex<Manifest>>,
     cwd: String,
 ) -> Vec<SessionSummary> {
-    let target = cwd.trim_end_matches('/').to_string();
+    let target = canonicalize_cwd(&cwd);
     let active: Vec<SessionSummary> = manager
         .list()
         .into_iter()
-        .filter(|s| s.cwd.display().to_string().trim_end_matches('/') == target)
+        .filter(|s| canonicalize_cwd(&s.cwd.display().to_string()) == target)
         .map(|s| SessionSummary {
             id: s.id.to_string(),
             name: s.name.clone(),
@@ -271,7 +271,7 @@ pub fn list_sessions_for_cwd(
     let m = manifest.lock().unwrap();
     let mut out = active;
     for s in &m.sessions {
-        if s.cwd.trim_end_matches('/') != target {
+        if canonicalize_cwd(&s.cwd) != target {
             continue;
         }
         if active_ids.contains(&s.id) {
@@ -299,7 +299,7 @@ pub fn set_last_cwd(
     cwd: String,
 ) -> Result<(), String> {
     let mut m = manifest.lock().unwrap();
-    m.last_cwd = Some(cwd);
+    m.last_cwd = Some(canonicalize_cwd(&cwd));
     save_to(&manifest_path, &m).map_err(|e| e.to_string())
 }
 
@@ -356,7 +356,10 @@ pub async fn pick_directory(app: AppHandle) -> Option<String> {
     app.dialog().file().pick_folder(move |folder| {
         let _ = tx.send(folder);
     });
-    rx.await.ok().flatten().map(|f| f.to_string())
+    rx.await
+        .ok()
+        .flatten()
+        .map(|f| canonicalize_cwd(&f.to_string()))
 }
 
 #[derive(Serialize)]
@@ -665,9 +668,10 @@ pub async fn resume_session(
         let m = manifest.lock().unwrap();
         (m.model.clone(), m.effort.clone())
     };
+    let cwd = resolve_cwd(PathBuf::from(args.cwd)).map_err(|e| e.to_string())?;
     let cfg = SessionConfig {
         binary: which_claude(),
-        cwd: PathBuf::from(args.cwd),
+        cwd,
         name: args.name,
         agent: None,
         resume_id: Some(args.id),
@@ -730,8 +734,14 @@ fn resolve_cwd(input: PathBuf) -> Result<PathBuf, String> {
     } else {
         input
     };
-    if !candidate.exists() {
-        return Err(format!("cwd does not exist: {}", candidate.display()));
-    }
-    Ok(candidate)
+    candidate
+        .canonicalize()
+        .map_err(|_| format!("cwd does not exist: {}", candidate.display()))
+}
+
+fn canonicalize_cwd(cwd: &str) -> String {
+    std::path::Path::new(cwd)
+        .canonicalize()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| cwd.trim_end_matches('/').to_string())
 }

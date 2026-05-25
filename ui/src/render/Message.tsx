@@ -8,7 +8,7 @@ export interface MessageProps {
   onAnswer?: (text: string) => void;
 }
 
-export const MessageRow: Component<MessageProps> = (props) => {
+function MessageContent(props: { message: Message; onAnswer?: (text: string) => void }) {
   const regularTools = () =>
     (props.message.tools ?? []).filter(
       (t) => t.name !== "Agent" && t.name !== "Task" && t.name !== "AskUserQuestion",
@@ -17,8 +17,49 @@ export const MessageRow: Component<MessageProps> = (props) => {
     (props.message.tools ?? []).filter((t) => t.name === "AskUserQuestion");
 
   return (
+    <>
+      <div innerHTML={renderMarkdown(props.message)} />
+      <Show when={regularTools().length > 0}>
+        <ToolGroup tools={regularTools()} />
+      </Show>
+      <For each={questionTools()}>
+        {(t) => <AskUserQuestionView tool={t} onAnswer={props.onAnswer} />}
+      </For>
+      <Show when={props.message.subagentRefs && props.message.subagentRefs.length > 0}>
+        <div style={{ "margin-top": "6px" }}>
+          <For each={props.message.subagentRefs}>
+            {(ref) => (
+              <div style={{
+                background: "var(--bg-0)",
+                "border-left": "2px solid var(--tool-subagent)",
+                padding: "4px 8px",
+                "border-radius": "3px",
+                "font-size": "10px",
+                "margin-top": "2px",
+                display: "flex",
+                "align-items": "baseline",
+                gap: "6px",
+              }}>
+                <span style={{ "font-weight": 600 }}>{ref.agent}</span>
+                <Show when={ref.description}>
+                  <span style={{ color: "var(--text-2)" }}>{ref.description}</span>
+                </Show>
+                <span style={{ color: "var(--text-3)", "font-size": "9px", "margin-left": "auto" }}>
+                  {ref.id.slice(0, 6)}
+                </span>
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
+    </>
+  );
+}
+
+export const MessageRow: Component<MessageProps> = (props) => {
+  return (
     <div style={{ "margin-bottom": "12px" }}>
-      <div class="section-label">{props.message.role}</div>
+      <div class="section-label">{props.message.role === "assistant" ? "Claude" : props.message.role}</div>
       <div
         style={{
           background: props.message.role === "user" ? "var(--bg-3)" : "var(--bg-2)",
@@ -26,40 +67,31 @@ export const MessageRow: Component<MessageProps> = (props) => {
           "border-radius": "6px",
         }}
       >
-        <div innerHTML={renderMarkdown(props.message)} />
-        <Show when={regularTools().length > 0}>
-          <ToolGroup tools={regularTools()} />
-        </Show>
-        <For each={questionTools()}>
-          {(t) => <AskUserQuestionView tool={t} onAnswer={props.onAnswer} />}
+        <MessageContent message={props.message} onAnswer={props.onAnswer} />
+      </div>
+    </div>
+  );
+};
+
+export const AssistantMessageGroup: Component<{ messages: Message[]; onAnswer?: (text: string) => void }> = (props) => {
+  return (
+    <div style={{ "margin-bottom": "12px" }}>
+      <div class="section-label">Claude</div>
+      <div style={{
+        background: "var(--bg-2)",
+        padding: "10px 12px",
+        "border-radius": "6px",
+      }}>
+        <For each={props.messages}>
+          {(message, idx) => (
+            <>
+              <Show when={idx() > 0}>
+                <br />
+              </Show>
+              <MessageContent message={message} onAnswer={props.onAnswer} />
+            </>
+          )}
         </For>
-        <Show when={props.message.subagentRefs && props.message.subagentRefs.length > 0}>
-          <div style={{ "margin-top": "6px" }}>
-            <For each={props.message.subagentRefs}>
-              {(ref) => (
-                <div style={{
-                  background: "var(--bg-0)",
-                  "border-left": "2px solid var(--tool-subagent)",
-                  padding: "4px 8px",
-                  "border-radius": "3px",
-                  "font-size": "10px",
-                  "margin-top": "2px",
-                  display: "flex",
-                  "align-items": "baseline",
-                  gap: "6px",
-                }}>
-                  <span style={{ "font-weight": 600 }}>{ref.agent}</span>
-                  <Show when={ref.description}>
-                    <span style={{ color: "var(--text-2)" }}>{ref.description}</span>
-                  </Show>
-                  <span style={{ color: "var(--text-3)", "font-size": "9px", "margin-left": "auto" }}>
-                    {ref.id.slice(0, 6)}
-                  </span>
-                </div>
-              )}
-            </For>
-          </div>
-        </Show>
       </div>
     </div>
   );
