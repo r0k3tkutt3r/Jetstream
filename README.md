@@ -44,7 +44,9 @@ Jetstream is different:
 
 ### Buy the prebuilt app — $4.99
 
-Download a signed, notarized `.dmg` from [the website](#). Drag to Applications, launch, done.
+Download a prebuilt `.dmg` from the [releases page](https://github.com/r0k3tkutt3r/jetstream/releases). Drag to Applications, launch, done.
+
+> **Note:** The app is not notarized. On first launch, right-click the app and choose **Open** to bypass Gatekeeper.
 
 ### Build it yourself — free
 
