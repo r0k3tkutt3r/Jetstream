@@ -5,7 +5,7 @@ export const config = {
   capabilities: [{
     maxInstances: 1,
     "tauri:options": {
-      application: "../../target/release/bundle/macos/CCShell.app/Contents/MacOS/CCShell",
+      application: "../../target/release/bundle/macos/Jetstream.app/Contents/MacOS/Jetstream",
     },
   }],
   framework: "mocha",
